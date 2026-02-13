@@ -4,8 +4,14 @@
     {
       "label": "Run Scrapers (15-minute schedule)",
       "type": "shell",
-      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
-      "args": ["main.py"],
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\run.ps1",
+        "main"
+      ],
       "isBackground": true,
       "problemMatcher": {
         "pattern": {
@@ -32,8 +38,14 @@
     {
       "label": "Run CVE Scraper Only",
       "type": "shell",
-      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
-      "args": ["cve_scraper.py"],
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\run.ps1",
+        "cve"
+      ],
       "problemMatcher": [],
       "presentation": {
         "echo": true,
@@ -46,8 +58,14 @@
     {
       "label": "Run News Scraper Only",
       "type": "shell",
-      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
-      "args": ["news_scraper.py"],
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\run.ps1",
+        "news"
+      ],
       "problemMatcher": [],
       "presentation": {
         "echo": true,

@@ -9,11 +9,13 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+from deduplication import headline_dedup_key
 
 NEWS_FILE = "data/cybersecurity_news.json"
 CYBERDAILY_URL = "https://www.cyberdaily.au/"
 ALLOWED_NEWS_HOSTS = {"www.cyberdaily.au", "cyberdaily.au"}
 MAX_HTML_BYTES = 5_000_000
+MAX_HEADLINES = 10
 
 
 def _is_allowed_url(url, allowed_hosts):
@@ -109,7 +111,7 @@ def scrape_cyberdaily_headlines():
             if not headline:
                 continue
 
-            key = (headline["title"], headline["link"])
+            key = headline_dedup_key(headline)
             if key in seen:
                 continue
             seen.add(key)
@@ -146,12 +148,14 @@ def save_headlines(headlines_data):
 
         merged = {}
         for headline in existing_headlines:
-            key = (headline.get("title", ""), headline.get("link", ""))
+            key = headline_dedup_key(headline)
+            if not key[0]:
+                continue
             merged[key] = headline
 
         new_headlines_added = 0
         for headline in headlines_data:
-            key = (headline.get("title", ""), headline.get("link", ""))
+            key = headline_dedup_key(headline)
             if not key[0]:
                 continue
             if key not in merged:
@@ -160,7 +164,7 @@ def save_headlines(headlines_data):
 
         merged_headlines = list(merged.values())
         merged_headlines.sort(key=lambda item: item.get("fetched_at", ""), reverse=True)
-        merged_headlines = merged_headlines[:500]
+        merged_headlines = merged_headlines[:MAX_HEADLINES]
 
         with open(NEWS_FILE, "w", encoding="utf-8") as f:
             json.dump(merged_headlines, f, indent=2, ensure_ascii=False)

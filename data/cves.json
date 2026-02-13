@@ -3,821 +3,177 @@
     "dataType": "CVE_RECORD",
     "dataVersion": "5.2",
     "cveMetadata": {
-      "cveId": "CVE-2026-2000",
-      "assignerOrgId": "1af790b2-7ee1-4545-860a-a788eba489b5",
+      "cveId": "CVE-2026-2391",
+      "assignerOrgId": "7ffcee3d-2c14-4c3e-b844-86c6a321a158",
       "state": "PUBLISHED",
-      "assignerShortName": "VulDB",
-      "dateReserved": "05-02-2026",
-      "datePublished": "06-02-2026",
+      "assignerShortName": "harborist",
+      "dateReserved": "12-02-2026",
+      "datePublished": "12-02-2026",
       "dateUpdated": "12-02-2026",
-      "timeUpdated": "15:08:14"
+      "timeUpdated": "17:32:05"
     },
     "containers": {
       "cna": {
-        "providerMetadata": {
-          "orgId": "1af790b2-7ee1-4545-860a-a788eba489b5",
-          "shortName": "VulDB",
-          "dateUpdated": "2026-02-06T06:32:05.840Z"
-        },
-        "title": "DCN DCME-320 Web Management Backend bridge_cfg.php apply_config command injection",
-        "problemTypes": [
+        "affected": [
           {
-            "descriptions": [
+            "collectionURL": "https://npmjs.com/qs",
+            "defaultStatus": "unaffected",
+            "packageName": "qs",
+            "repo": "https://github.com/ljharb/qs",
+            "versions": [
               {
-                "type": "CWE",
-                "cweId": "CWE-77",
-                "lang": "en",
-                "description": "Command Injection"
-              }
-            ]
-          },
-          {
-            "descriptions": [
-              {
-                "type": "CWE",
-                "cweId": "CWE-74",
-                "lang": "en",
-                "description": "Injection"
+                "lessThanOrEqual": "6.14.1",
+                "status": "affected",
+                "version": "6.7.0",
+                "versionType": "semver"
               }
             ]
           }
         ],
-        "affected": [
+        "descriptions": [
           {
-            "vendor": "DCN",
-            "product": "DCME-320",
-            "versions": [
+            "lang": "en",
+            "supportingMedia": [
               {
-                "version": "20260121",
-                "status": "affected"
+                "base64": false,
+                "type": "text/html",
+                "value": "### Summary<br>The `arrayLimit` option in qs does not enforce limits for comma-separated values when `comma: true` is enabled, allowing attackers to cause denial-of-service via memory exhaustion. This is a bypass of the array limit enforcement, similar to the bracket notation bypass addressed in GHSA-6rw7-vpxm-498p (CVE-2025-15284).<br><br>### Details<br>When the `comma` option is set to `true` (not the default, but configurable in applications), qs allows parsing comma-separated strings as arrays (e.g., `?param=a,b,c` becomes `['a', 'b', 'c']`). However, the limit check for `arrayLimit` (default: 20) and the optional throwOnLimitExceeded occur after the comma-handling logic in `parseArrayValue`, enabling a bypass. This permits creation of arbitrarily large arrays from a single parameter, leading to excessive memory allocation.<br><br>**Vulnerable code** (lib/parse.js: lines ~40-50):<br>```js<br>if (val &amp;&amp; typeof val === 'string' &amp;&amp; options.comma &amp;&amp; val.indexOf(',') &gt; -1) {<br>&nbsp; &nbsp; return val.split(',');<br>}<br><br>if (options.throwOnLimitExceeded &amp;&amp; currentArrayLength &gt;= options.arrayLimit) {<br>&nbsp; &nbsp; throw new RangeError('Array limit exceeded. Only ' + options.arrayLimit + ' element' + (options.arrayLimit === 1 ? '' : 's') + ' allowed in an array.');<br>}<br><br>return val;<br>```<br>The `split(',')` returns the array immediately, skipping the subsequent limit check. Downstream merging via `utils.combine` does not prevent allocation, even if it marks overflows for sparse arrays.This discrepancy allows attackers to send a single parameter with millions of commas (e.g., `?param=,,,,,,,,...`), allocating massive arrays in memory without triggering limits. It bypasses the intent of `arrayLimit`, which is enforced correctly for indexed (`a[0]=`) and bracket (`a[]=`) notations (the latter fixed in v6.14.1 per GHSA-6rw7-vpxm-498p).<br><br>### PoC<br>**Test 1 - Basic bypass:**<br>```<br>npm install qs<br>```<br><br>```js<br>const qs = require('qs');<br><br>const payload = 'a=' + ','.repeat(25);  // 26 elements after split (bypasses arrayLimit: 5)<br>const options = { comma: true, arrayLimit: 5, throwOnLimitExceeded: true };<br><br>try {<br>&nbsp; const result = qs.parse(payload, options);<br>&nbsp; console.log(result.a.length);  // Outputs: 26 (bypass successful)<br>} catch (e) {<br>&nbsp; console.log('Limit enforced:', e.message);  // Not thrown<br>}<br>```<br>**Configuration:**<br>- `comma: true`<br>- `arrayLimit: 5`<br>- `throwOnLimitExceeded: true`<br><br>Expected: Throws \"Array limit exceeded\" error.<br>Actual: Parses successfully, creating an array of length 26.<br><br><br>### Impact<br>Denial of Service (DoS) via memory exhaustion.<br>"
               }
             ],
-            "modules": [
-              "Web Management Backend"
-            ]
+            "value": "### Summary\nThe `arrayLimit` option in qs does not enforce limits for comma-separated values when `comma: true` is enabled, allowing attackers to cause denial-of-service via memory exhaustion. This is a bypass of the array limit enforcement, similar to the bracket notation bypass addressed in GHSA-6rw7-vpxm-498p (CVE-2025-15284).\n\n### Details\nWhen the `comma` option is set to `true` (not the default, but configurable in applications), qs allows parsing comma-separated strings as arrays (e.g., `?param=a,b,c` becomes `['a', 'b', 'c']`). However, the limit check for `arrayLimit` (default: 20) and the optional throwOnLimitExceeded occur after the comma-handling logic in `parseArrayValue`, enabling a bypass. This permits creation of arbitrarily large arrays from a single parameter, leading to excessive memory allocation.\n\n**Vulnerable code** (lib/parse.js: lines ~40-50):\n```js\nif (val && typeof val === 'string' && options.comma && val.indexOf(',') > -1) {\n    return val.split(',');\n}\n\nif (options.throwOnLimitExceeded && currentArrayLength >= options.arrayLimit) {\n    throw new RangeError('Array limit exceeded. Only ' + options.arrayLimit + ' element' + (options.arrayLimit === 1 ? '' : 's') + ' allowed in an array.');\n}\n\nreturn val;\n```\nThe `split(',')` returns the array immediately, skipping the subsequent limit check. Downstream merging via `utils.combine` does not prevent allocation, even if it marks overflows for sparse arrays.This discrepancy allows attackers to send a single parameter with millions of commas (e.g., `?param=,,,,,,,,...`), allocating massive arrays in memory without triggering limits. It bypasses the intent of `arrayLimit`, which is enforced correctly for indexed (`a[0]=`) and bracket (`a[]=`) notations (the latter fixed in v6.14.1 per GHSA-6rw7-vpxm-498p).\n\n### PoC\n**Test 1 - Basic bypass:**\n```\nnpm install qs\n```\n\n```js\nconst qs = require('qs');\n\nconst payload = 'a=' + ','.repeat(25);  // 26 elements after split (bypasses arrayLimit: 5)\nconst options = { comma: true, arrayLimit: 5, throwOnLimitExceeded: true };\n\ntry {\n  const result = qs.parse(payload, options);\n  console.log(result.a.length);  // Outputs: 26 (bypass successful)\n} catch (e) {\n  console.log('Limit enforced:', e.message);  // Not thrown\n}\n```\n**Configuration:**\n- `comma: true`\n- `arrayLimit: 5`\n- `throwOnLimitExceeded: true`\n\nExpected: Throws \"Array limit exceeded\" error.\nActual: Parses successfully, creating an array of length 26.\n\n\n### Impact\nDenial of Service (DoS) via memory exhaustion."
           }
         ],
-        "descriptions": [
+        "impacts": [
           {
-            "lang": "en",
-            "value": "A vulnerability was found in DCN DCME-320 up to 20260121. Impacted is the function apply_config of the file /function/system/basic/bridge_cfg.php of the component Web Management Backend. Performing a manipulation of the argument ip_list results in command injection. The attack is possible to be carried out remotely. The exploit has been made public and could be used. The vendor was contacted early about this disclosure but did not respond in any way."
+            "capecId": "CAPEC-130",
+            "descriptions": [
+              {
+                "lang": "en",
+                "value": "CAPEC-130 Excessive Allocation"
+              }
+            ]
           }
         ],
         "metrics": [
           {
             "cvssV4_0": {
+              "Automatable": "NOT_DEFINED",
+              "Recovery": "NOT_DEFINED",
+              "Safety": "NOT_DEFINED",
+              "attackComplexity": "LOW",
+              "attackRequirements": "PRESENT",
+              "attackVector": "NETWORK",
+              "baseScore": 6.3,
+              "baseSeverity": "MEDIUM",
+              "exploitMaturity": "NOT_DEFINED",
+              "privilegesRequired": "NONE",
+              "providerUrgency": "NOT_DEFINED",
+              "subAvailabilityImpact": "NONE",
+              "subConfidentialityImpact": "NONE",
+              "subIntegrityImpact": "NONE",
+              "userInteraction": "NONE",
+              "valueDensity": "NOT_DEFINED",
+              "vectorString": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:N/VI:N/VA:L/SC:N/SI:N/SA:N",
               "version": "4.0",
-              "baseScore": 5.1,
-              "vectorString": "CVSS:4.0/AV:N/AC:L/AT:N/PR:H/UI:N/VC:L/VI:L/VA:L/SC:N/SI:N/SA:N/E:P",
-              "baseSeverity": "MEDIUM"
-            }
+              "vulnAvailabilityImpact": "LOW",
+              "vulnConfidentialityImpact": "NONE",
+              "vulnIntegrityImpact": "NONE",
+              "vulnerabilityResponseEffort": "NOT_DEFINED"
+            },
+            "format": "CVSS",
+            "scenarios": [
+              {
+                "lang": "en",
+                "value": "GENERAL"
+              }
+            ]
           },
           {
             "cvssV3_1": {
-              "version": "3.1",
-              "baseScore": 4.7,
-              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:L/I:L/A:L/E:P/RL:X/RC:R",
-              "baseSeverity": "MEDIUM"
-            }
-          },
-          {
-            "cvssV3_0": {
-              "version": "3.0",
-              "baseScore": 4.7,
-              "vectorString": "CVSS:3.0/AV:N/AC:L/PR:H/UI:N/S:U/C:L/I:L/A:L/E:P/RL:X/RC:R",
-              "baseSeverity": "MEDIUM"
-            }
-          },
-          {
-            "cvssV2_0": {
-              "version": "2.0",
-              "baseScore": 5.8,
-              "vectorString": "AV:N/AC:L/Au:M/C:P/I:P/A:P/E:POC/RL:ND/RC:UR"
-            }
-          }
-        ],
-        "timeline": [
-          {
-            "time": "2026-02-05T00:00:00.000Z",
-            "lang": "en",
-            "value": "Advisory disclosed"
-          },
-          {
-            "time": "2026-02-05T01:00:00.000Z",
-            "lang": "en",
-            "value": "VulDB entry created"
-          },
-          {
-            "time": "2026-02-05T18:23:46.000Z",
-            "lang": "en",
-            "value": "VulDB entry last update"
-          }
-        ],
-        "credits": [
-          {
-            "lang": "en",
-            "value": "physicszq (VulDB User)",
-            "type": "reporter"
-          }
-        ],
-        "references": [
-          {
-            "url": "https://vuldb.com/?id.344548",
-            "name": "VDB-344548 | DCN DCME-320 Web Management Backend bridge_cfg.php apply_config command injection",
-            "tags": [
-              "vdb-entry",
-              "technical-description"
-            ]
-          },
-          {
-            "url": "https://vuldb.com/?ctiid.344548",
-            "name": "VDB-344548 | CTI Indicators (IOB, IOC, TTP, IOA)",
-            "tags": [
-              "signature",
-              "permissions-required"
-            ]
-          },
-          {
-            "url": "https://vuldb.com/?submit.743455",
-            "name": "Submit #743455 | 北京神州数码云科信息技术有限公司 Dcme320  latest Command Injection",
-            "tags": [
-              "third-party-advisory"
-            ]
-          },
-          {
-            "url": "https://github.com/physicszq/Routers/tree/main/Dcme",
-            "tags": [
-              "exploit"
-            ]
-          }
-        ]
-      },
-      "adp": [
-        {
-          "metrics": [
-            {
-              "other": {
-                "type": "ssvc",
-                "content": {
-                  "timestamp": "2026-02-12T15:08:08.048195Z",
-                  "id": "CVE-2026-2000",
-                  "options": [
-                    {
-                      "Exploitation": "poc"
-                    },
-                    {
-                      "Automatable": "no"
-                    },
-                    {
-                      "Technical Impact": "partial"
-                    }
-                  ],
-                  "role": "CISA Coordinator",
-                  "version": "2.0.3"
-                }
+              "attackComplexity": "HIGH",
+              "attackVector": "NETWORK",
+              "availabilityImpact": "LOW",
+              "baseScore": 3.7,
+              "baseSeverity": "LOW",
+              "confidentialityImpact": "NONE",
+              "integrityImpact": "NONE",
+              "privilegesRequired": "NONE",
+              "scope": "UNCHANGED",
+              "userInteraction": "NONE",
+              "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:L",
+              "version": "3.1"
+            },
+            "format": "CVSS",
+            "scenarios": [
+              {
+                "lang": "en",
+                "value": "GENERAL"
               }
-            }
-          ],
-          "title": "CISA ADP Vulnrichment",
-          "providerMetadata": {
-            "orgId": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
-            "shortName": "CISA-ADP",
-            "dateUpdated": "2026-02-12T15:08:14.859Z"
+            ]
           }
-        }
-      ]
-    },
-    "_fetched_at": "2026-02-13T10:11:21.566888"
-  },
-  {
-    "dataType": "CVE_RECORD",
-    "dataVersion": "5.2",
-    "cveMetadata": {
-      "cveId": "CVE-2026-2008",
-      "assignerOrgId": "1af790b2-7ee1-4545-860a-a788eba489b5",
-      "state": "PUBLISHED",
-      "assignerShortName": "VulDB",
-      "dateReserved": "05-02-2026",
-      "datePublished": "06-02-2026",
-      "dateUpdated": "12-02-2026",
-      "timeUpdated": "15:06:58"
-    },
-    "containers": {
-      "cna": {
-        "providerMetadata": {
-          "orgId": "1af790b2-7ee1-4545-860a-a788eba489b5",
-          "shortName": "VulDB",
-          "dateUpdated": "2026-02-06T07:02:07.279Z"
-        },
-        "title": "abhiphile fermat-mcp eqn_chart.py eqn_chart code injection",
+        ],
         "problemTypes": [
           {
             "descriptions": [
               {
-                "type": "CWE",
-                "cweId": "CWE-94",
+                "cweId": "CWE-20",
+                "description": "CWE-20 Improper Input Validation",
                 "lang": "en",
-                "description": "Code Injection"
-              }
-            ]
-          },
-          {
-            "descriptions": [
-              {
-                "type": "CWE",
-                "cweId": "CWE-74",
-                "lang": "en",
-                "description": "Injection"
+                "type": "CWE"
               }
             ]
           }
         ],
-        "affected": [
-          {
-            "vendor": "abhiphile",
-            "product": "fermat-mcp",
-            "versions": [
-              {
-                "version": "47f11def1cd37e45dd060f30cdce346cbdbd6f0a",
-                "status": "affected"
-              }
-            ]
-          }
-        ],
-        "descriptions": [
-          {
-            "lang": "en",
-            "value": "A vulnerability was detected in abhiphile fermat-mcp up to 47f11def1cd37e45dd060f30cdce346cbdbd6f0a. This vulnerability affects the function eqn_chart of the file fmcp/mpl_mcp/core/eqn_chart.py. Performing a manipulation of the argument equations results in code injection. It is possible to initiate the attack remotely. The exploit is now public and may be used. This product is using a rolling release to provide continious delivery. Therefore, no version details for affected nor updated releases are available. The project was informed of the problem early through an issue report but has not responded yet."
-          }
-        ],
-        "metrics": [
-          {
-            "cvssV4_0": {
-              "version": "4.0",
-              "baseScore": 5.3,
-              "vectorString": "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:L/VI:L/VA:L/SC:N/SI:N/SA:N/E:P",
-              "baseSeverity": "MEDIUM"
-            }
-          },
-          {
-            "cvssV3_1": {
-              "version": "3.1",
-              "baseScore": 6.3,
-              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:L/E:P/RL:X/RC:R",
-              "baseSeverity": "MEDIUM"
-            }
-          },
-          {
-            "cvssV3_0": {
-              "version": "3.0",
-              "baseScore": 6.3,
-              "vectorString": "CVSS:3.0/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:L/E:P/RL:X/RC:R",
-              "baseSeverity": "MEDIUM"
-            }
-          },
-          {
-            "cvssV2_0": {
-              "version": "2.0",
-              "baseScore": 6.5,
-              "vectorString": "AV:N/AC:L/Au:S/C:P/I:P/A:P/E:POC/RL:ND/RC:UR"
-            }
-          }
-        ],
-        "timeline": [
-          {
-            "time": "2026-02-05T00:00:00.000Z",
-            "lang": "en",
-            "value": "Advisory disclosed"
-          },
-          {
-            "time": "2026-02-05T01:00:00.000Z",
-            "lang": "en",
-            "value": "VulDB entry created"
-          },
-          {
-            "time": "2026-02-05T20:24:45.000Z",
-            "lang": "en",
-            "value": "VulDB entry last update"
-          }
-        ],
-        "credits": [
-          {
-            "lang": "en",
-            "value": "Lexpl0it (VulDB User)",
-            "type": "reporter"
-          }
-        ],
+        "providerMetadata": {
+          "orgId": "7ffcee3d-2c14-4c3e-b844-86c6a321a158",
+          "shortName": "harborist",
+          "dateUpdated": "2026-02-12T17:32:05.953Z"
+        },
         "references": [
           {
-            "url": "https://vuldb.com/?id.344590",
-            "name": "VDB-344590 | abhiphile fermat-mcp eqn_chart.py eqn_chart code injection",
             "tags": [
-              "vdb-entry",
-              "technical-description"
-            ]
-          },
-          {
-            "url": "https://vuldb.com/?ctiid.344590",
-            "name": "VDB-344590 | CTI Indicators (IOB, IOC, TTP, IOA)",
-            "tags": [
-              "signature",
-              "permissions-required"
-            ]
-          },
-          {
-            "url": "https://vuldb.com/?submit.743458",
-            "name": "Submit #743458 | GitHub  fermat-mcp master Code Injection",
-            "tags": [
-              "third-party-advisory"
-            ]
-          },
-          {
-            "url": "https://github.com/abhiphile/fermat-mcp/issues/9",
-            "tags": [
-              "issue-tracking"
-            ]
-          },
-          {
-            "url": "https://github.com/abhiphile/fermat-mcp/issues/9#issue-3837794397",
-            "tags": [
-              "exploit",
-              "issue-tracking"
-            ]
-          },
-          {
-            "url": "https://github.com/abhiphile/fermat-mcp/",
-            "tags": [
-              "product"
-            ]
-          }
-        ]
-      },
-      "adp": [
-        {
-          "metrics": [
-            {
-              "other": {
-                "type": "ssvc",
-                "content": {
-                  "timestamp": "2026-02-12T15:06:50.640472Z",
-                  "id": "CVE-2026-2008",
-                  "options": [
-                    {
-                      "Exploitation": "poc"
-                    },
-                    {
-                      "Automatable": "no"
-                    },
-                    {
-                      "Technical Impact": "partial"
-                    }
-                  ],
-                  "role": "CISA Coordinator",
-                  "version": "2.0.3"
-                }
-              }
-            }
-          ],
-          "title": "CISA ADP Vulnrichment",
-          "providerMetadata": {
-            "orgId": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
-            "shortName": "CISA-ADP",
-            "dateUpdated": "2026-02-12T15:06:58.507Z"
-          }
-        }
-      ]
-    },
-    "_fetched_at": "2026-02-13T10:11:23.084073"
-  },
-  {
-    "dataType": "CVE_RECORD",
-    "dataVersion": "5.2",
-    "cveMetadata": {
-      "cveId": "CVE-2026-2009",
-      "assignerOrgId": "1af790b2-7ee1-4545-860a-a788eba489b5",
-      "state": "PUBLISHED",
-      "assignerShortName": "VulDB",
-      "dateReserved": "05-02-2026",
-      "datePublished": "06-02-2026",
-      "dateUpdated": "12-02-2026",
-      "timeUpdated": "15:06:21"
-    },
-    "containers": {
-      "cna": {
-        "providerMetadata": {
-          "orgId": "1af790b2-7ee1-4545-860a-a788eba489b5",
-          "shortName": "VulDB",
-          "dateUpdated": "2026-02-06T07:32:08.975Z"
-        },
-        "title": "SourceCodester Gas Agency Management System createUser.php access control",
-        "problemTypes": [
-          {
-            "descriptions": [
-              {
-                "type": "CWE",
-                "cweId": "CWE-284",
-                "lang": "en",
-                "description": "Improper Access Controls"
-              }
-            ]
-          },
-          {
-            "descriptions": [
-              {
-                "type": "CWE",
-                "cweId": "CWE-266",
-                "lang": "en",
-                "description": "Incorrect Privilege Assignment"
-              }
-            ]
-          }
-        ],
-        "affected": [
-          {
-            "vendor": "SourceCodester",
-            "product": "Gas Agency Management System",
-            "versions": [
-              {
-                "version": "1.0",
-                "status": "affected"
-              }
-            ]
-          }
-        ],
-        "descriptions": [
-          {
-            "lang": "en",
-            "value": "A flaw has been found in SourceCodester Gas Agency Management System 1.0. This issue affects some unknown processing of the file /gasmark/php_action/createUser.php. Executing a manipulation can lead to improper access controls. It is possible to launch the attack remotely. The exploit has been published and may be used."
-          }
-        ],
-        "metrics": [
-          {
-            "cvssV4_0": {
-              "version": "4.0",
-              "baseScore": 5.3,
-              "vectorString": "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:L/VI:L/VA:L/SC:N/SI:N/SA:N/E:P",
-              "baseSeverity": "MEDIUM"
-            }
-          },
-          {
-            "cvssV3_1": {
-              "version": "3.1",
-              "baseScore": 6.3,
-              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:L/E:P/RL:X/RC:R",
-              "baseSeverity": "MEDIUM"
-            }
-          },
-          {
-            "cvssV3_0": {
-              "version": "3.0",
-              "baseScore": 6.3,
-              "vectorString": "CVSS:3.0/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:L/E:P/RL:X/RC:R",
-              "baseSeverity": "MEDIUM"
-            }
-          },
-          {
-            "cvssV2_0": {
-              "version": "2.0",
-              "baseScore": 6.5,
-              "vectorString": "AV:N/AC:L/Au:S/C:P/I:P/A:P/E:POC/RL:ND/RC:UR"
-            }
-          }
-        ],
-        "timeline": [
-          {
-            "time": "2026-02-05T00:00:00.000Z",
-            "lang": "en",
-            "value": "Advisory disclosed"
-          },
-          {
-            "time": "2026-02-05T01:00:00.000Z",
-            "lang": "en",
-            "value": "VulDB entry created"
-          },
-          {
-            "time": "2026-02-05T20:26:52.000Z",
-            "lang": "en",
-            "value": "VulDB entry last update"
-          }
-        ],
-        "credits": [
-          {
-            "lang": "en",
-            "value": "moasim (VulDB User)",
-            "type": "reporter"
-          }
-        ],
-        "references": [
-          {
-            "url": "https://vuldb.com/?id.344591",
-            "name": "VDB-344591 | SourceCodester Gas Agency Management System createUser.php access control",
-            "tags": [
-              "vdb-entry"
-            ]
-          },
-          {
-            "url": "https://vuldb.com/?ctiid.344591",
-            "name": "VDB-344591 | CTI Indicators (IOB, IOC, TTP, IOA)",
-            "tags": [
-              "signature",
-              "permissions-required"
-            ]
-          },
-          {
-            "url": "https://vuldb.com/?submit.743459",
-            "name": "Submit #743459 | SourceCodester Gas Agency Management System 1.0 Improper Access Controls",
-            "tags": [
-              "third-party-advisory"
-            ]
-          },
-          {
-            "url": "https://github.com/Asim-QAZi/Improper-Access-Control-in-SourceCodester-Gas-Agency-Management-System",
-            "tags": [
-              "exploit"
-            ]
-          },
-          {
-            "url": "https://www.sourcecodester.com/",
-            "tags": [
-              "product"
-            ]
-          }
-        ],
-        "tags": [
-          "x_freeware"
-        ]
-      },
-      "adp": [
-        {
-          "metrics": [
-            {
-              "other": {
-                "type": "ssvc",
-                "content": {
-                  "timestamp": "2026-02-12T15:06:09.883167Z",
-                  "id": "CVE-2026-2009",
-                  "options": [
-                    {
-                      "Exploitation": "poc"
-                    },
-                    {
-                      "Automatable": "no"
-                    },
-                    {
-                      "Technical Impact": "partial"
-                    }
-                  ],
-                  "role": "CISA Coordinator",
-                  "version": "2.0.3"
-                }
-              }
-            }
-          ],
-          "title": "CISA ADP Vulnrichment",
-          "providerMetadata": {
-            "orgId": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
-            "shortName": "CISA-ADP",
-            "dateUpdated": "2026-02-12T15:06:21.273Z"
-          }
-        }
-      ]
-    },
-    "_fetched_at": "2026-02-13T10:11:23.403043"
-  },
-  {
-    "dataType": "CVE_RECORD",
-    "dataVersion": "5.2",
-    "cveMetadata": {
-      "cveId": "CVE-2026-2010",
-      "assignerOrgId": "1af790b2-7ee1-4545-860a-a788eba489b5",
-      "state": "PUBLISHED",
-      "assignerShortName": "VulDB",
-      "dateReserved": "05-02-2026",
-      "datePublished": "06-02-2026",
-      "dateUpdated": "12-02-2026",
-      "timeUpdated": "15:05:45"
-    },
-    "containers": {
-      "cna": {
-        "providerMetadata": {
-          "orgId": "1af790b2-7ee1-4545-860a-a788eba489b5",
-          "shortName": "VulDB",
-          "dateUpdated": "2026-02-06T08:02:09.018Z"
-        },
-        "title": "Sanluan PublicCMS Trade Payment TradePaymentService.java paid improper authorization",
-        "problemTypes": [
-          {
-            "descriptions": [
-              {
-                "type": "CWE",
-                "cweId": "CWE-285",
-                "lang": "en",
-                "description": "Improper Authorization"
-              }
-            ]
-          },
-          {
-            "descriptions": [
-              {
-                "type": "CWE",
-                "cweId": "CWE-266",
-                "lang": "en",
-                "description": "Incorrect Privilege Assignment"
-              }
-            ]
-          }
-        ],
-        "affected": [
-          {
-            "vendor": "Sanluan",
-            "product": "PublicCMS",
-            "versions": [
-              {
-                "version": "4.0.202506.a",
-                "status": "affected"
-              },
-              {
-                "version": "4.0.202506.b",
-                "status": "affected"
-              },
-              {
-                "version": "4.0.202506.c",
-                "status": "affected"
-              },
-              {
-                "version": "4.0.202506.d",
-                "status": "affected"
-              },
-              {
-                "version": "5.202506.a",
-                "status": "affected"
-              },
-              {
-                "version": "5.202506.b",
-                "status": "affected"
-              },
-              {
-                "version": "5.202506.c",
-                "status": "affected"
-              },
-              {
-                "version": "5.202506.d",
-                "status": "affected"
-              },
-              {
-                "version": "6.202506.a",
-                "status": "affected"
-              },
-              {
-                "version": "6.202506.b",
-                "status": "affected"
-              },
-              {
-                "version": "6.202506.c",
-                "status": "affected"
-              },
-              {
-                "version": "6.202506.d",
-                "status": "affected"
-              }
+              "vendor-advisory"
             ],
-            "modules": [
-              "Trade Payment Handler"
-            ]
-          }
-        ],
-        "descriptions": [
-          {
-            "lang": "en",
-            "value": "A vulnerability has been found in Sanluan PublicCMS up to 4.0.202506.d/5.202506.d/6.202506.d. Impacted is the function Paid of the file publiccms-parent/publiccms-trade/src/main/java/com/publiccms/logic/service/trade/TradePaymentService.java of the component Trade Payment Handler. The manipulation of the argument paymentId leads to improper authorization. The attack can be initiated remotely. The complexity of an attack is rather high. The exploitability is considered difficult. The exploit has been disclosed to the public and may be used. The identifier of the patch is 7329437e1288540336b1c66c114ed3363adcba02. It is recommended to apply a patch to fix this issue."
-          }
-        ],
-        "metrics": [
-          {
-            "cvssV4_0": {
-              "version": "4.0",
-              "baseScore": 2.3,
-              "vectorString": "CVSS:4.0/AV:N/AC:H/AT:N/PR:L/UI:N/VC:N/VI:L/VA:L/SC:N/SI:N/SA:N/E:P",
-              "baseSeverity": "LOW"
-            }
+            "url": "https://github.com/ljharb/qs/security/advisories/GHSA-w7fw-mjwx-w883"
           },
           {
-            "cvssV3_1": {
-              "version": "3.1",
-              "baseScore": 4.2,
-              "vectorString": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:L/A:L/E:P/RL:O/RC:C",
-              "baseSeverity": "MEDIUM"
-            }
-          },
-          {
-            "cvssV3_0": {
-              "version": "3.0",
-              "baseScore": 4.2,
-              "vectorString": "CVSS:3.0/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:L/A:L/E:P/RL:O/RC:C",
-              "baseSeverity": "MEDIUM"
-            }
-          },
-          {
-            "cvssV2_0": {
-              "version": "2.0",
-              "baseScore": 3.6,
-              "vectorString": "AV:N/AC:H/Au:S/C:N/I:P/A:P/E:POC/RL:OF/RC:C"
-            }
-          }
-        ],
-        "timeline": [
-          {
-            "time": "2026-02-05T00:00:00.000Z",
-            "lang": "en",
-            "value": "Advisory disclosed"
-          },
-          {
-            "time": "2026-02-05T01:00:00.000Z",
-            "lang": "en",
-            "value": "VulDB entry created"
-          },
-          {
-            "time": "2026-02-05T20:30:06.000Z",
-            "lang": "en",
-            "value": "VulDB entry last update"
-          }
-        ],
-        "credits": [
-          {
-            "lang": "en",
-            "value": "AliceS614 (VulDB User)",
-            "type": "reporter"
-          }
-        ],
-        "references": [
-          {
-            "url": "https://vuldb.com/?id.344592",
-            "name": "VDB-344592 | Sanluan PublicCMS Trade Payment TradePaymentService.java paid improper authorization",
-            "tags": [
-              "vdb-entry",
-              "technical-description"
-            ]
-          },
-          {
-            "url": "https://vuldb.com/?ctiid.344592",
-            "name": "VDB-344592 | CTI Indicators (IOB, IOC, TTP, IOA)",
-            "tags": [
-              "signature",
-              "permissions-required"
-            ]
-          },
-          {
-            "url": "https://vuldb.com/?submit.743487",
-            "name": "Submit #743487 | PublicCMS 5 Improper Access Controls",
-            "tags": [
-              "third-party-advisory"
-            ]
-          },
-          {
-            "url": "https://github.com/sanluan/PublicCMS/issues/108",
-            "tags": [
-              "issue-tracking"
-            ]
-          },
-          {
-            "url": "https://github.com/sanluan/PublicCMS/issues/108#issue-3838143772",
-            "tags": [
-              "exploit",
-              "issue-tracking"
-            ]
-          },
-          {
-            "url": "https://github.com/sanluan/PublicCMS/commit/7329437e1288540336b1c66c114ed3363adcba02",
             "tags": [
               "patch"
-            ]
-          },
-          {
-            "url": "https://github.com/sanluan/PublicCMS/",
-            "tags": [
-              "product"
-            ]
+            ],
+            "url": "https://github.com/ljharb/qs/commit/f6a7abff1f13d644db9b05fe4f2c98ada6bf8482"
           }
         ],
-        "tags": [
-          "x_open-source"
-        ]
+        "source": {
+          "discovery": "UNKNOWN"
+        },
+        "title": "qs's arrayLimit bypass in comma parsing allows denial of service",
+        "x_generator": {
+          "engine": "Vulnogram 0.5.0"
+        }
       },
       "adp": [
         {
+          "references": [
+            {
+              "url": "https://github.com/ljharb/qs/security/advisories/GHSA-w7fw-mjwx-w883",
+              "tags": [
+                "exploit"
+              ]
+            }
+          ],
           "metrics": [
             {
               "other": {
                 "type": "ssvc",
                 "content": {
-                  "timestamp": "2026-02-12T15:05:30.584584Z",
-                  "id": "CVE-2026-2010",
+                  "timestamp": "2026-02-12T15:00:21.359233Z",
+                  "id": "CVE-2026-2391",
                   "options": [
                     {
                       "Exploitation": "poc"
                     },
                     {
-                      "Automatable": "no"
+                      "Automatable": "yes"
                     },
                     {
                       "Technical Impact": "partial"
@@ -833,672 +189,148 @@
           "providerMetadata": {
             "orgId": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
             "shortName": "CISA-ADP",
-            "dateUpdated": "2026-02-12T15:05:45.408Z"
+            "dateUpdated": "2026-02-12T15:00:40.388Z"
           }
         }
       ]
     },
-    "_fetched_at": "2026-02-13T10:11:23.714625"
+    "_fetched_at": "2026-02-13T00:52:20.544777Z"
   },
   {
     "dataType": "CVE_RECORD",
     "dataVersion": "5.2",
     "cveMetadata": {
-      "cveId": "CVE-2026-2003",
-      "assignerOrgId": "f86ef6dc-4d3a-42ad-8f28-e6d5547a5007",
+      "cveId": "CVE-2026-2327",
+      "assignerOrgId": "bae035ff-b466-4ff4-94d0-fc9efd9e1730",
       "state": "PUBLISHED",
-      "assignerShortName": "PostgreSQL",
-      "dateReserved": "05-02-2026",
+      "assignerShortName": "snyk",
+      "dateReserved": "11-02-2026",
       "datePublished": "12-02-2026",
       "dateUpdated": "12-02-2026",
-      "timeUpdated": "14:33:37"
+      "timeUpdated": "14:41:53"
     },
     "containers": {
       "cna": {
-        "providerMetadata": {
-          "orgId": "f86ef6dc-4d3a-42ad-8f28-e6d5547a5007",
-          "shortName": "PostgreSQL",
-          "dateUpdated": "2026-02-12T13:00:06.108Z"
-        },
-        "title": "PostgreSQL oidvector discloses a few bytes of memory",
-        "descriptions": [
+        "metrics": [
           {
-            "lang": "en",
-            "value": "Improper validation of type \"oidvector\" in PostgreSQL allows a database user to disclose a few bytes of server memory.  We have not ruled out viability of attacks that arrange for presence of confidential information in disclosed bytes, but they seem unlikely.  Versions before PostgreSQL 18.2, 17.8, 16.12, 15.16, and 14.21 are affected."
+            "cvssV3_1": {
+              "version": "3.1",
+              "attackVector": "NETWORK",
+              "attackComplexity": "LOW",
+              "exploitCodeMaturity": "PROOF_OF_CONCEPT",
+              "privilegesRequired": "NONE",
+              "userInteraction": "NONE",
+              "scope": "UNCHANGED",
+              "confidentialityImpact": "NONE",
+              "integrityImpact": "NONE",
+              "availabilityImpact": "LOW",
+              "baseScore": 5.3,
+              "baseSeverity": "MEDIUM",
+              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L/E:P"
+            },
+            "cvssV4_0": {
+              "version": "4.0",
+              "attackVector": "NETWORK",
+              "attackComplexity": "LOW",
+              "attackRequirements": "NONE",
+              "exploitMaturity": "PROOF_OF_CONCEPT",
+              "privilegesRequired": "NONE",
+              "userInteraction": "NONE",
+              "vulnConfidentialityImpact": "NONE",
+              "vulnIntegrityImpact": "NONE",
+              "vulnAvailabilityImpact": "LOW",
+              "subConfidentialityImpact": "NONE",
+              "subIntegrityImpact": "NONE",
+              "subAvailabilityImpact": "NONE",
+              "baseScore": 6.9,
+              "baseSeverity": "MEDIUM",
+              "vectorString": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:L/SC:N/SI:N/SA:N/E:P"
+            }
           }
         ],
-        "affected": [
+        "credits": [
           {
-            "defaultStatus": "unaffected",
-            "product": "PostgreSQL",
-            "vendor": "n/a",
-            "versions": [
-              {
-                "lessThan": "18.2",
-                "status": "affected",
-                "version": "18",
-                "versionType": "rpm"
-              },
-              {
-                "lessThan": "17.8",
-                "status": "affected",
-                "version": "17",
-                "versionType": "rpm"
-              },
-              {
-                "lessThan": "16.12",
-                "status": "affected",
-                "version": "16",
-                "versionType": "rpm"
-              },
-              {
-                "lessThan": "15.16",
-                "status": "affected",
-                "version": "15",
-                "versionType": "rpm"
-              },
-              {
-                "lessThan": "14.21",
-                "status": "affected",
-                "version": "0",
-                "versionType": "rpm"
-              }
-            ]
+            "value": "Duc Le Trung",
+            "lang": "en"
           }
         ],
         "problemTypes": [
           {
             "descriptions": [
               {
-                "lang": "en",
-                "cweId": "CWE-1287",
-                "type": "CWE",
-                "description": "Improper Validation of Specified Type of Input"
+                "cweId": "CWE-1333",
+                "description": "Regular Expression Denial of Service (ReDoS)",
+                "lang": "en"
               }
             ]
           }
         ],
+        "providerMetadata": {
+          "orgId": "bae035ff-b466-4ff4-94d0-fc9efd9e1730",
+          "shortName": "snyk",
+          "dateUpdated": "2026-02-12T05:00:07.369Z"
+        },
+        "descriptions": [
+          {
+            "value": "Versions of the package markdown-it from 13.0.0 and before 14.1.1 are vulnerable to Regular Expression Denial of Service (ReDoS) due to the use of the regex /\\*+$/ in the linkify function. An attacker can supply a long sequence of * characters followed by a non-matching character, which triggers excessive backtracking and may lead to a denial-of-service condition.",
+            "lang": "en"
+          }
+        ],
         "references": [
           {
-            "url": "https://www.postgresql.org/support/security/CVE-2026-2003/"
+            "url": "https://security.snyk.io/vuln/SNYK-JS-MARKDOWNIT-10666750"
+          },
+          {
+            "url": "https://gist.github.com/ltduc147/c9abecae1b291ede4f692f2ab988c917"
+          },
+          {
+            "url": "https://github.com/markdown-it/markdown-it/blob/14.1.0/lib/rules_inline/linkify.mjs%23L33"
+          },
+          {
+            "url": "https://github.com/markdown-it/markdown-it/commit/4b4bbcae5e0990a5b172378e507b33a59012ed26"
           }
         ],
-        "metrics": [
+        "affected": [
           {
-            "format": "CVSS",
-            "cvssV3_1": {
-              "version": "3.1",
-              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N",
-              "baseScore": 4.3,
-              "baseSeverity": "MEDIUM"
-            }
-          }
-        ],
-        "credits": [
-          {
-            "lang": "en",
-            "value": "The PostgreSQL project thanks Altan Birler for reporting this problem."
+            "product": "markdown-it",
+            "versions": [
+              {
+                "version": "13.0.0",
+                "lessThan": "14.1.1",
+                "status": "affected",
+                "versionType": "semver"
+              }
+            ],
+            "vendor": "n/a"
           }
         ]
       },
       "adp": [
         {
-          "metrics": [
+          "references": [
             {
-              "other": {
-                "type": "ssvc",
-                "content": {
-                  "timestamp": "2026-02-12T14:33:29.418479Z",
-                  "id": "CVE-2026-2003",
-                  "options": [
-                    {
-                      "Exploitation": "none"
-                    },
-                    {
-                      "Automatable": "no"
-                    },
-                    {
-                      "Technical Impact": "partial"
-                    }
-                  ],
-                  "role": "CISA Coordinator",
-                  "version": "2.0.3"
-                }
-              }
+              "url": "https://security.snyk.io/vuln/SNYK-JS-MARKDOWNIT-10666750",
+              "tags": [
+                "exploit"
+              ]
+            },
+            {
+              "url": "https://gist.github.com/ltduc147/c9abecae1b291ede4f692f2ab988c917",
+              "tags": [
+                "exploit"
+              ]
             }
           ],
-          "title": "CISA ADP Vulnrichment",
-          "providerMetadata": {
-            "orgId": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
-            "shortName": "CISA-ADP",
-            "dateUpdated": "2026-02-12T14:33:37.255Z"
-          }
-        }
-      ]
-    },
-    "_fetched_at": "2026-02-13T10:11:21.808139"
-  },
-  {
-    "dataType": "CVE_RECORD",
-    "dataVersion": "5.2",
-    "cveMetadata": {
-      "cveId": "CVE-2026-2004",
-      "assignerOrgId": "f86ef6dc-4d3a-42ad-8f28-e6d5547a5007",
-      "state": "PUBLISHED",
-      "assignerShortName": "PostgreSQL",
-      "dateReserved": "05-02-2026",
-      "datePublished": "12-02-2026",
-      "dateUpdated": "12-02-2026",
-      "timeUpdated": "14:32:53"
-    },
-    "containers": {
-      "cna": {
-        "providerMetadata": {
-          "orgId": "f86ef6dc-4d3a-42ad-8f28-e6d5547a5007",
-          "shortName": "PostgreSQL",
-          "dateUpdated": "2026-02-12T13:00:08.857Z"
-        },
-        "title": "PostgreSQL intarray missing validation of type of input to selectivity estimator executes arbitrary code",
-        "descriptions": [
-          {
-            "lang": "en",
-            "value": "Missing validation of type of input in PostgreSQL intarray extension selectivity estimator function allows an object creator to execute arbitrary code as the operating system user running the database.  Versions before PostgreSQL 18.2, 17.8, 16.12, 15.16, and 14.21 are affected."
-          }
-        ],
-        "affected": [
-          {
-            "defaultStatus": "unaffected",
-            "product": "PostgreSQL",
-            "vendor": "n/a",
-            "versions": [
-              {
-                "lessThan": "18.2",
-                "status": "affected",
-                "version": "18",
-                "versionType": "rpm"
-              },
-              {
-                "lessThan": "17.8",
-                "status": "affected",
-                "version": "17",
-                "versionType": "rpm"
-              },
-              {
-                "lessThan": "16.12",
-                "status": "affected",
-                "version": "16",
-                "versionType": "rpm"
-              },
-              {
-                "lessThan": "15.16",
-                "status": "affected",
-                "version": "15",
-                "versionType": "rpm"
-              },
-              {
-                "lessThan": "14.21",
-                "status": "affected",
-                "version": "0",
-                "versionType": "rpm"
-              }
-            ]
-          }
-        ],
-        "problemTypes": [
-          {
-            "descriptions": [
-              {
-                "lang": "en",
-                "cweId": "CWE-1287",
-                "type": "CWE",
-                "description": "Improper Validation of Specified Type of Input"
-              }
-            ]
-          }
-        ],
-        "references": [
-          {
-            "url": "https://www.postgresql.org/support/security/CVE-2026-2004/"
-          }
-        ],
-        "metrics": [
-          {
-            "format": "CVSS",
-            "cvssV3_1": {
-              "version": "3.1",
-              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
-              "baseScore": 8.8,
-              "baseSeverity": "HIGH"
-            }
-          }
-        ],
-        "configurations": [
-          {
-            "lang": "en",
-            "value": "Attacker has permission to install a vulnerable extension, e.g. intarray.  Alternatively, a vulnerable extension is already installed, and the attacker has permission to create objects (temporary objects or non-temporary objects in at least one schema)."
-          }
-        ],
-        "credits": [
-          {
-            "lang": "en",
-            "value": "The PostgreSQL project thanks Daniel Firer, as part of zeroday.cloud, for reporting this problem."
-          }
-        ]
-      },
-      "adp": [
-        {
           "metrics": [
             {
               "other": {
                 "type": "ssvc",
                 "content": {
-                  "timestamp": "2026-02-12T14:32:27.181953Z",
-                  "id": "CVE-2026-2004",
+                  "timestamp": "2026-02-12T14:41:31.205349Z",
+                  "id": "CVE-2026-2327",
                   "options": [
                     {
-                      "Exploitation": "none"
-                    },
-                    {
-                      "Automatable": "no"
-                    },
-                    {
-                      "Technical Impact": "total"
-                    }
-                  ],
-                  "role": "CISA Coordinator",
-                  "version": "2.0.3"
-                }
-              }
-            }
-          ],
-          "title": "CISA ADP Vulnrichment",
-          "providerMetadata": {
-            "orgId": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
-            "shortName": "CISA-ADP",
-            "dateUpdated": "2026-02-12T14:32:53.686Z"
-          }
-        }
-      ]
-    },
-    "_fetched_at": "2026-02-13T10:11:22.044147"
-  },
-  {
-    "dataType": "CVE_RECORD",
-    "dataVersion": "5.2",
-    "cveMetadata": {
-      "cveId": "CVE-2026-2005",
-      "assignerOrgId": "f86ef6dc-4d3a-42ad-8f28-e6d5547a5007",
-      "state": "PUBLISHED",
-      "assignerShortName": "PostgreSQL",
-      "dateReserved": "05-02-2026",
-      "datePublished": "12-02-2026",
-      "dateUpdated": "12-02-2026",
-      "timeUpdated": "14:32:00"
-    },
-    "containers": {
-      "cna": {
-        "providerMetadata": {
-          "orgId": "f86ef6dc-4d3a-42ad-8f28-e6d5547a5007",
-          "shortName": "PostgreSQL",
-          "dateUpdated": "2026-02-12T13:00:09.784Z"
-        },
-        "title": "PostgreSQL pgcrypto heap buffer overflow executes arbitrary code",
-        "descriptions": [
-          {
-            "lang": "en",
-            "value": "Heap buffer overflow in PostgreSQL pgcrypto allows a ciphertext provider to execute arbitrary code as the operating system user running the database.  Versions before PostgreSQL 18.2, 17.8, 16.12, 15.16, and 14.21 are affected."
-          }
-        ],
-        "affected": [
-          {
-            "defaultStatus": "unaffected",
-            "product": "PostgreSQL",
-            "vendor": "n/a",
-            "versions": [
-              {
-                "lessThan": "18.2",
-                "status": "affected",
-                "version": "18",
-                "versionType": "rpm"
-              },
-              {
-                "lessThan": "17.8",
-                "status": "affected",
-                "version": "17",
-                "versionType": "rpm"
-              },
-              {
-                "lessThan": "16.12",
-                "status": "affected",
-                "version": "16",
-                "versionType": "rpm"
-              },
-              {
-                "lessThan": "15.16",
-                "status": "affected",
-                "version": "15",
-                "versionType": "rpm"
-              },
-              {
-                "lessThan": "14.21",
-                "status": "affected",
-                "version": "0",
-                "versionType": "rpm"
-              }
-            ]
-          }
-        ],
-        "problemTypes": [
-          {
-            "descriptions": [
-              {
-                "lang": "en",
-                "cweId": "CWE-122",
-                "type": "CWE",
-                "description": "Heap-based Buffer Overflow"
-              }
-            ]
-          }
-        ],
-        "references": [
-          {
-            "url": "https://www.postgresql.org/support/security/CVE-2026-2005/"
-          }
-        ],
-        "metrics": [
-          {
-            "format": "CVSS",
-            "cvssV3_1": {
-              "version": "3.1",
-              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
-              "baseScore": 8.8,
-              "baseSeverity": "HIGH"
-            }
-          }
-        ],
-        "configurations": [
-          {
-            "lang": "en",
-            "value": "attacker has permission to install pgcrypto or pass arbitrary ciphertext to an already-installed pgcrypto"
-          }
-        ],
-        "credits": [
-          {
-            "lang": "en",
-            "value": "The PostgreSQL project thanks Team Xint Code, as part of zeroday.cloud, for reporting this problem."
-          }
-        ]
-      },
-      "adp": [
-        {
-          "metrics": [
-            {
-              "other": {
-                "type": "ssvc",
-                "content": {
-                  "timestamp": "2026-02-12T14:31:50.522599Z",
-                  "id": "CVE-2026-2005",
-                  "options": [
-                    {
-                      "Exploitation": "none"
-                    },
-                    {
-                      "Automatable": "no"
-                    },
-                    {
-                      "Technical Impact": "total"
-                    }
-                  ],
-                  "role": "CISA Coordinator",
-                  "version": "2.0.3"
-                }
-              }
-            }
-          ],
-          "title": "CISA ADP Vulnrichment",
-          "providerMetadata": {
-            "orgId": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
-            "shortName": "CISA-ADP",
-            "dateUpdated": "2026-02-12T14:32:00.177Z"
-          }
-        }
-      ]
-    },
-    "_fetched_at": "2026-02-13T10:11:22.272997"
-  },
-  {
-    "dataType": "CVE_RECORD",
-    "dataVersion": "5.2",
-    "cveMetadata": {
-      "cveId": "CVE-2026-2006",
-      "assignerOrgId": "f86ef6dc-4d3a-42ad-8f28-e6d5547a5007",
-      "state": "PUBLISHED",
-      "assignerShortName": "PostgreSQL",
-      "dateReserved": "05-02-2026",
-      "datePublished": "12-02-2026",
-      "dateUpdated": "12-02-2026",
-      "timeUpdated": "14:19:26"
-    },
-    "containers": {
-      "cna": {
-        "providerMetadata": {
-          "orgId": "f86ef6dc-4d3a-42ad-8f28-e6d5547a5007",
-          "shortName": "PostgreSQL",
-          "dateUpdated": "2026-02-12T13:00:10.490Z"
-        },
-        "title": "PostgreSQL missing validation of multibyte character length executes arbitrary code",
-        "descriptions": [
-          {
-            "lang": "en",
-            "value": "Missing validation of multibyte character length in PostgreSQL text manipulation allows a database user to issue crafted queries that achieve a buffer overrun.  That suffices to execute arbitrary code as the operating system user running the database.  Versions before PostgreSQL 18.2, 17.8, 16.12, 15.16, and 14.21 are affected."
-          }
-        ],
-        "affected": [
-          {
-            "defaultStatus": "unaffected",
-            "product": "PostgreSQL",
-            "vendor": "n/a",
-            "versions": [
-              {
-                "lessThan": "18.2",
-                "status": "affected",
-                "version": "18",
-                "versionType": "rpm"
-              },
-              {
-                "lessThan": "17.8",
-                "status": "affected",
-                "version": "17",
-                "versionType": "rpm"
-              },
-              {
-                "lessThan": "16.12",
-                "status": "affected",
-                "version": "16",
-                "versionType": "rpm"
-              },
-              {
-                "lessThan": "15.16",
-                "status": "affected",
-                "version": "15",
-                "versionType": "rpm"
-              },
-              {
-                "lessThan": "14.21",
-                "status": "affected",
-                "version": "0",
-                "versionType": "rpm"
-              }
-            ]
-          }
-        ],
-        "problemTypes": [
-          {
-            "descriptions": [
-              {
-                "lang": "en",
-                "cweId": "CWE-129",
-                "type": "CWE",
-                "description": "Improper Validation of Array Index"
-              }
-            ]
-          }
-        ],
-        "references": [
-          {
-            "url": "https://www.postgresql.org/support/security/CVE-2026-2006/"
-          }
-        ],
-        "metrics": [
-          {
-            "format": "CVSS",
-            "cvssV3_1": {
-              "version": "3.1",
-              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
-              "baseScore": 8.8,
-              "baseSeverity": "HIGH"
-            }
-          }
-        ],
-        "credits": [
-          {
-            "lang": "en",
-            "value": "The PostgreSQL project thanks Paul Gerste and Moritz Sanft, as part of zeroday.cloud, for reporting this problem."
-          }
-        ]
-      },
-      "adp": [
-        {
-          "metrics": [
-            {
-              "other": {
-                "type": "ssvc",
-                "content": {
-                  "timestamp": "2026-02-12T14:19:14.114412Z",
-                  "id": "CVE-2026-2006",
-                  "options": [
-                    {
-                      "Exploitation": "none"
-                    },
-                    {
-                      "Automatable": "no"
-                    },
-                    {
-                      "Technical Impact": "total"
-                    }
-                  ],
-                  "role": "CISA Coordinator",
-                  "version": "2.0.3"
-                }
-              }
-            }
-          ],
-          "title": "CISA ADP Vulnrichment",
-          "providerMetadata": {
-            "orgId": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
-            "shortName": "CISA-ADP",
-            "dateUpdated": "2026-02-12T14:19:26.142Z"
-          }
-        }
-      ]
-    },
-    "_fetched_at": "2026-02-13T10:11:22.524796"
-  },
-  {
-    "dataType": "CVE_RECORD",
-    "dataVersion": "5.2",
-    "cveMetadata": {
-      "cveId": "CVE-2026-2007",
-      "assignerOrgId": "f86ef6dc-4d3a-42ad-8f28-e6d5547a5007",
-      "state": "PUBLISHED",
-      "assignerShortName": "PostgreSQL",
-      "dateReserved": "05-02-2026",
-      "datePublished": "12-02-2026",
-      "dateUpdated": "12-02-2026",
-      "timeUpdated": "14:18:19"
-    },
-    "containers": {
-      "cna": {
-        "providerMetadata": {
-          "orgId": "f86ef6dc-4d3a-42ad-8f28-e6d5547a5007",
-          "shortName": "PostgreSQL",
-          "dateUpdated": "2026-02-12T13:00:11.127Z"
-        },
-        "title": "PostgreSQL pg_trgm heap buffer overflow writes pattern onto server memory",
-        "descriptions": [
-          {
-            "lang": "en",
-            "value": "Heap buffer overflow in PostgreSQL pg_trgm allows a database user to achieve unknown impacts via a crafted input string.  The attacker has limited control over the byte patterns to be written, but we have not ruled out the viability of attacks that lead to privilege escalation.  PostgreSQL 18.1 and 18.0 are affected."
-          }
-        ],
-        "affected": [
-          {
-            "defaultStatus": "unaffected",
-            "product": "PostgreSQL",
-            "vendor": "n/a",
-            "versions": [
-              {
-                "lessThan": "18.2",
-                "status": "affected",
-                "version": "18",
-                "versionType": "rpm"
-              }
-            ]
-          }
-        ],
-        "problemTypes": [
-          {
-            "descriptions": [
-              {
-                "lang": "en",
-                "cweId": "CWE-122",
-                "type": "CWE",
-                "description": "Heap-based Buffer Overflow"
-              }
-            ]
-          }
-        ],
-        "references": [
-          {
-            "url": "https://www.postgresql.org/support/security/CVE-2026-2007/"
-          }
-        ],
-        "metrics": [
-          {
-            "format": "CVSS",
-            "cvssV3_1": {
-              "version": "3.1",
-              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:H",
-              "baseScore": 8.2,
-              "baseSeverity": "HIGH"
-            }
-          }
-        ],
-        "configurations": [
-          {
-            "lang": "en",
-            "value": "attacker has permission to install pg_trgm in a database with certain locales or pass text to an existing installation"
-          }
-        ],
-        "credits": [
-          {
-            "lang": "en",
-            "value": "The PostgreSQL project thanks Heikki Linnakangas for reporting this problem."
-          }
-        ]
-      },
-      "adp": [
-        {
-          "metrics": [
-            {
-              "other": {
-                "type": "ssvc",
-                "content": {
-                  "timestamp": "2026-02-12T14:18:10.396498Z",
-                  "id": "CVE-2026-2007",
-                  "options": [
-                    {
-                      "Exploitation": "none"
+                      "Exploitation": "poc"
                     },
                     {
                       "Automatable": "yes"
@@ -1517,172 +349,550 @@
           "providerMetadata": {
             "orgId": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
             "shortName": "CISA-ADP",
-            "dateUpdated": "2026-02-12T14:18:19.886Z"
+            "dateUpdated": "2026-02-12T14:41:53.714Z"
           }
         }
       ]
     },
-    "_fetched_at": "2026-02-13T10:11:22.803002"
+    "_fetched_at": "2026-02-13T00:52:20.802899Z"
   },
   {
     "dataType": "CVE_RECORD",
     "dataVersion": "5.2",
     "cveMetadata": {
-      "cveId": "CVE-2026-2011",
-      "assignerOrgId": "1af790b2-7ee1-4545-860a-a788eba489b5",
+      "cveId": "CVE-2026-2361",
+      "assignerOrgId": "f86ef6dc-4d3a-42ad-8f28-e6d5547a5007",
       "state": "PUBLISHED",
-      "assignerShortName": "VulDB",
-      "dateReserved": "05-02-2026",
-      "datePublished": "06-02-2026",
-      "dateUpdated": "06-02-2026",
-      "timeUpdated": "16:51:19"
+      "assignerShortName": "PostgreSQL",
+      "dateReserved": "11-02-2026",
+      "datePublished": "11-02-2026",
+      "dateUpdated": "11-02-2026",
+      "timeUpdated": "18:24:03"
     },
     "containers": {
       "cna": {
         "providerMetadata": {
-          "orgId": "1af790b2-7ee1-4545-860a-a788eba489b5",
-          "shortName": "VulDB",
-          "dateUpdated": "2026-02-06T08:32:06.745Z"
+          "orgId": "f86ef6dc-4d3a-42ad-8f28-e6d5547a5007",
+          "shortName": "PostgreSQL",
+          "dateUpdated": "2026-02-11T17:48:03.805Z"
         },
-        "title": "itsourcecode Student Management System controller.php sql injection",
-        "problemTypes": [
+        "title": "Improper search_path protection in PostgreSQL Anonymizer 2.5 allows any user with create privilege to gain superuser privileges",
+        "descriptions": [
           {
-            "descriptions": [
-              {
-                "type": "CWE",
-                "cweId": "CWE-89",
-                "lang": "en",
-                "description": "SQL Injection"
-              }
-            ]
-          },
-          {
-            "descriptions": [
-              {
-                "type": "CWE",
-                "cweId": "CWE-74",
-                "lang": "en",
-                "description": "Injection"
-              }
-            ]
+            "lang": "en",
+            "value": "PostgreSQL Anonymizer contains a vulnerability that allows a user to gain superuser privileges by creating a temporary view based on a function containing malicious code. When the anon.get_tablesample_ratio function is then called, the malicious code is executed with superuser privileges. This privilege elevation can be exploited by users having the CREATE privilege in PostgreSQL 15 and later. The risk is higher with PostgreSQL 14 or with instances upgraded from PostgreSQL 14 or a prior version because the creation permission on the public schema is granted by default. The problem is resolved in PostgreSQL Anonymizer 3.0.1 and further versions"
           }
         ],
         "affected": [
           {
-            "vendor": "itsourcecode",
-            "product": "Student Management System",
+            "defaultStatus": "unaffected",
+            "product": "PostgreSQL Anonymizer",
+            "vendor": "DALIBO",
             "versions": [
               {
-                "version": "1.0",
-                "status": "affected"
+                "lessThan": "3.0.1",
+                "status": "affected",
+                "version": "1",
+                "versionType": "rpm"
               }
             ]
+          }
+        ],
+        "problemTypes": [
+          {
+            "descriptions": [
+              {
+                "lang": "en",
+                "cweId": "CWE-427",
+                "type": "CWE",
+                "description": "Uncontrolled Search Path Element"
+              }
+            ]
+          }
+        ],
+        "references": [
+          {
+            "url": "https://gitlab.com/dalibo/postgresql_anonymizer/-/blob/latest/NEWS.md"
+          },
+          {
+            "url": "https://gitlab.com/dalibo/postgresql_anonymizer/-/issues/617"
+          }
+        ],
+        "metrics": [
+          {
+            "format": "CVSS",
+            "cvssV3_1": {
+              "version": "3.1",
+              "vectorString": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:H",
+              "baseScore": 8,
+              "baseSeverity": "HIGH"
+            }
+          }
+        ],
+        "workarounds": [
+          {
+            "lang": "en",
+            "value": "Drop the anon.get_tablesample_ratio function. It is obsolete."
+          }
+        ],
+        "credits": [
+          {
+            "lang": "en",
+            "value": "The PostgreSQL Anonymizer project thanks Daniel Bakker for reporting this problem."
+          }
+        ]
+      },
+      "adp": [
+        {
+          "metrics": [
+            {
+              "other": {
+                "type": "ssvc",
+                "content": {
+                  "timestamp": "2026-02-11T18:23:47.877689Z",
+                  "id": "CVE-2026-2361",
+                  "options": [
+                    {
+                      "Exploitation": "none"
+                    },
+                    {
+                      "Automatable": "no"
+                    },
+                    {
+                      "Technical Impact": "total"
+                    }
+                  ],
+                  "role": "CISA Coordinator",
+                  "version": "2.0.3"
+                }
+              }
+            }
+          ],
+          "title": "CISA ADP Vulnrichment",
+          "providerMetadata": {
+            "orgId": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+            "shortName": "CISA-ADP",
+            "dateUpdated": "2026-02-11T18:24:03.242Z"
+          }
+        }
+      ]
+    },
+    "_fetched_at": "2026-02-13T00:52:20.550342Z"
+  },
+  {
+    "dataType": "CVE_RECORD",
+    "dataVersion": "5.2",
+    "cveMetadata": {
+      "cveId": "CVE-2026-2360",
+      "assignerOrgId": "f86ef6dc-4d3a-42ad-8f28-e6d5547a5007",
+      "state": "PUBLISHED",
+      "assignerShortName": "PostgreSQL",
+      "dateReserved": "11-02-2026",
+      "datePublished": "11-02-2026",
+      "dateUpdated": "11-02-2026",
+      "timeUpdated": "18:29:12"
+    },
+    "containers": {
+      "cna": {
+        "providerMetadata": {
+          "orgId": "f86ef6dc-4d3a-42ad-8f28-e6d5547a5007",
+          "shortName": "PostgreSQL",
+          "dateUpdated": "2026-02-11T17:47:55.737Z"
+        },
+        "title": "Improper search_path protection in PostgreSQL Anonymizer 2.5 allows any user to gain superuser privileges in PostgreSQL 14",
+        "descriptions": [
+          {
+            "lang": "en",
+            "value": "PostgreSQL Anonymizer contains a vulnerability that allows a user to gain superuser privileges by creating a custom operator in the public schema and place malicious code in that operator. This operator will later be executed with superuser privileges when the extension is created. The risk is higher with PostgreSQL 14 or with instances upgraded from PostgreSQL 14 or a prior version. With PostgreSQL 15 and later, the creation permission on the public schema is revoked by default and this exploit can only be achieved if a superuser adds a new schema in her/his own search_path and grants the CREATE privilege on that schema to untrusted users, both actions being clearly discouraged by the PostgreSQL documentation. The problem is resolved in PostgreSQL Anonymizer 3.0.1 and further versions"
+          }
+        ],
+        "affected": [
+          {
+            "defaultStatus": "unaffected",
+            "product": "PostgreSQL Anonymizer",
+            "vendor": "DALIBO",
+            "versions": [
+              {
+                "lessThan": "3.0.1",
+                "status": "affected",
+                "version": "1",
+                "versionType": "rpm"
+              }
+            ]
+          }
+        ],
+        "problemTypes": [
+          {
+            "descriptions": [
+              {
+                "lang": "en",
+                "cweId": "CWE-427",
+                "type": "CWE",
+                "description": "Uncontrolled Search Path Element"
+              }
+            ]
+          }
+        ],
+        "references": [
+          {
+            "url": "https://gitlab.com/dalibo/postgresql_anonymizer/-/blob/latest/NEWS.md"
+          },
+          {
+            "url": "https://gitlab.com/dalibo/postgresql_anonymizer/-/issues/616"
+          },
+          {
+            "url": "https://www.postgresql.org/docs/current/ddl-schemas.html#DDL-SCHEMAS-PATH"
+          }
+        ],
+        "metrics": [
+          {
+            "format": "CVSS",
+            "cvssV3_1": {
+              "version": "3.1",
+              "vectorString": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:H",
+              "baseScore": 8,
+              "baseSeverity": "HIGH"
+            }
+          }
+        ],
+        "workarounds": [
+          {
+            "lang": "en",
+            "value": "Do not allow users to create new objects in the public schema by running the following command in all of your databases: REVOKE CREATE ON SCHEMA public FROM PUBLIC;"
+          }
+        ],
+        "credits": [
+          {
+            "lang": "en",
+            "value": "The PostgreSQL Anonymizer project thanks Daniel Bakker for reporting this problem."
+          }
+        ]
+      },
+      "adp": [
+        {
+          "metrics": [
+            {
+              "other": {
+                "type": "ssvc",
+                "content": {
+                  "timestamp": "2026-02-11T18:26:16.656159Z",
+                  "id": "CVE-2026-2360",
+                  "options": [
+                    {
+                      "Exploitation": "none"
+                    },
+                    {
+                      "Automatable": "no"
+                    },
+                    {
+                      "Technical Impact": "total"
+                    }
+                  ],
+                  "role": "CISA Coordinator",
+                  "version": "2.0.3"
+                }
+              }
+            }
+          ],
+          "title": "CISA ADP Vulnrichment",
+          "providerMetadata": {
+            "orgId": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+            "shortName": "CISA-ADP",
+            "dateUpdated": "2026-02-11T18:29:12.805Z"
+          }
+        }
+      ]
+    },
+    "_fetched_at": "2026-02-13T00:52:20.603742Z"
+  },
+  {
+    "dataType": "CVE_RECORD",
+    "dataVersion": "5.2",
+    "cveMetadata": {
+      "cveId": "CVE-2026-2345",
+      "assignerOrgId": "7004884b-51e2-48e8-b4a2-5ca29e80453e",
+      "state": "PUBLISHED",
+      "assignerShortName": "Hackrate",
+      "dateReserved": "11-02-2026",
+      "datePublished": "11-02-2026",
+      "dateUpdated": "11-02-2026",
+      "timeUpdated": "21:19:08"
+    },
+    "containers": {
+      "cna": {
+        "affected": [
+          {
+            "defaultStatus": "unaffected",
+            "product": "Secure Exam Proctor Extension",
+            "vendor": "Proctorio",
+            "versions": [
+              {
+                "status": "affected",
+                "version": "1.5.25220.33"
+              },
+              {
+                "status": "unaffected",
+                "version": "1.5.25220.36"
+              }
+            ]
+          }
+        ],
+        "credits": [
+          {
+            "lang": "en",
+            "type": "reporter",
+            "value": "Caen Jones (@vcc3v)"
           }
         ],
         "descriptions": [
           {
             "lang": "en",
-            "value": "A vulnerability was found in itsourcecode Student Management System 1.0. The affected element is an unknown function of the file /ramonsys/enrollment/controller.php. The manipulation of the argument ID results in sql injection. The attack can be launched remotely. The exploit has been made public and could be used."
+            "supportingMedia": [
+              {
+                "base64": false,
+                "type": "text/html",
+                "value": "<p>Proctorio Chrome Extension is a browser extension used for online proctoring. The extension contains multiple window.addEventListener('message', ...) handlers that do not properly validate the origin of incoming messages. Specifically, an internal messaging bridge processes messages based solely on the presence of a fromWebsite property without verifying the event.origin attribute.<br></p>"
+              }
+            ],
+            "value": "Proctorio Chrome Extension is a browser extension used for online proctoring. The extension contains multiple window.addEventListener('message', ...) handlers that do not properly validate the origin of incoming messages. Specifically, an internal messaging bridge processes messages based solely on the presence of a fromWebsite property without verifying the event.origin attribute."
+          }
+        ],
+        "impacts": [
+          {
+            "capecId": "CAPEC-63",
+            "descriptions": [
+              {
+                "lang": "en",
+                "value": "CAPEC-63 Cross-Site Scripting (XSS)"
+              }
+            ]
+          }
+        ],
+        "metrics": [
+          {
+            "cvssV3_1": {
+              "attackComplexity": "HIGH",
+              "attackVector": "LOCAL",
+              "availabilityImpact": "NONE",
+              "baseScore": 3.6,
+              "baseSeverity": "LOW",
+              "confidentialityImpact": "LOW",
+              "integrityImpact": "LOW",
+              "privilegesRequired": "NONE",
+              "scope": "UNCHANGED",
+              "userInteraction": "REQUIRED",
+              "vectorString": "CVSS:3.1/AV:L/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:N",
+              "version": "3.1"
+            },
+            "format": "CVSS",
+            "scenarios": [
+              {
+                "lang": "en",
+                "value": "GENERAL"
+              }
+            ]
+          }
+        ],
+        "problemTypes": [
+          {
+            "descriptions": [
+              {
+                "cweId": "CWE-346",
+                "description": "CWE-346 Origin Validation Error",
+                "lang": "en",
+                "type": "CWE"
+              }
+            ]
+          }
+        ],
+        "providerMetadata": {
+          "orgId": "7004884b-51e2-48e8-b4a2-5ca29e80453e",
+          "shortName": "Hackrate",
+          "dateUpdated": "2026-02-11T14:49:44.991Z"
+        },
+        "references": [
+          {
+            "url": "https://www.hckrt.com/hacktivity/46b61f36-b685-4667-aebf-82a67ad69ad6"
+          }
+        ],
+        "source": {
+          "discovery": "UNKNOWN"
+        },
+        "title": "Insufficient Origin Validation in Proctorio Chrome Extension postMessage Handlers",
+        "x_generator": {
+          "engine": "Vulnogram 0.5.0"
+        }
+      },
+      "adp": [
+        {
+          "metrics": [
+            {
+              "other": {
+                "type": "ssvc",
+                "content": {
+                  "timestamp": "2026-02-11T21:19:02.758590Z",
+                  "id": "CVE-2026-2345",
+                  "options": [
+                    {
+                      "Exploitation": "none"
+                    },
+                    {
+                      "Automatable": "no"
+                    },
+                    {
+                      "Technical Impact": "partial"
+                    }
+                  ],
+                  "role": "CISA Coordinator",
+                  "version": "2.0.3"
+                }
+              }
+            }
+          ],
+          "title": "CISA ADP Vulnrichment",
+          "providerMetadata": {
+            "orgId": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+            "shortName": "CISA-ADP",
+            "dateUpdated": "2026-02-11T21:19:08.551Z"
+          }
+        }
+      ]
+    },
+    "_fetched_at": "2026-02-13T00:52:20.653246Z"
+  },
+  {
+    "dataType": "CVE_RECORD",
+    "dataVersion": "5.2",
+    "cveMetadata": {
+      "cveId": "CVE-2026-2344",
+      "assignerOrgId": "64c5ae8f-7972-4697-86a0-7ada793ac795",
+      "state": "PUBLISHED",
+      "assignerShortName": "TCS-CERT",
+      "dateReserved": "11-02-2026",
+      "datePublished": "11-02-2026",
+      "dateUpdated": "11-02-2026",
+      "timeUpdated": "21:19:41"
+    },
+    "containers": {
+      "cna": {
+        "affected": [
+          {
+            "defaultStatus": "unaffected",
+            "product": "Plunet BusinessManager",
+            "vendor": "Plunet",
+            "versions": [
+              {
+                "status": "affected",
+                "version": "10.15.1"
+              },
+              {
+                "status": "unaffected",
+                "version": "10.20"
+              }
+            ]
+          }
+        ],
+        "datePublic": "2026-02-11T14:00:00.000Z",
+        "descriptions": [
+          {
+            "lang": "en",
+            "supportingMedia": [
+              {
+                "base64": false,
+                "type": "text/html",
+                "value": "A vulnerability in Plunet Plunet BusinessManager allows unauthorized actions being performed on behalf of privileged users.<p>This issue affects Plunet BusinessManager: 10.15.1</p>"
+              }
+            ],
+            "value": "A vulnerability in Plunet Plunet BusinessManager allows unauthorized actions being performed on behalf of privileged users.This issue affects Plunet BusinessManager: 10.15.1"
+          }
+        ],
+        "impacts": [
+          {
+            "descriptions": [
+              {
+                "lang": "en",
+                "value": "unauthorized  actions being performed on behalf of privileged users"
+              }
+            ]
           }
         ],
         "metrics": [
           {
             "cvssV4_0": {
+              "Automatable": "NOT_DEFINED",
+              "Recovery": "NOT_DEFINED",
+              "Safety": "NOT_DEFINED",
+              "attackComplexity": "LOW",
+              "attackRequirements": "NONE",
+              "attackVector": "NETWORK",
+              "baseScore": 8.6,
+              "baseSeverity": "HIGH",
+              "exploitMaturity": "NOT_DEFINED",
+              "privilegesRequired": "LOW",
+              "providerUrgency": "NOT_DEFINED",
+              "subAvailabilityImpact": "NONE",
+              "subConfidentialityImpact": "LOW",
+              "subIntegrityImpact": "LOW",
+              "userInteraction": "PASSIVE",
+              "valueDensity": "NOT_DEFINED",
+              "vectorString": "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:P/VC:H/VI:H/VA:L/SC:L/SI:L/SA:N",
               "version": "4.0",
-              "baseScore": 6.9,
-              "vectorString": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:L/VA:L/SC:N/SI:N/SA:N/E:P",
-              "baseSeverity": "MEDIUM"
-            }
-          },
-          {
-            "cvssV3_1": {
-              "version": "3.1",
-              "baseScore": 7.3,
-              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L/E:P/RL:X/RC:R",
-              "baseSeverity": "HIGH"
-            }
-          },
-          {
-            "cvssV3_0": {
-              "version": "3.0",
-              "baseScore": 7.3,
-              "vectorString": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L/E:P/RL:X/RC:R",
-              "baseSeverity": "HIGH"
-            }
-          },
-          {
-            "cvssV2_0": {
-              "version": "2.0",
-              "baseScore": 7.5,
-              "vectorString": "AV:N/AC:L/Au:N/C:P/I:P/A:P/E:POC/RL:ND/RC:UR"
-            }
+              "vulnAvailabilityImpact": "LOW",
+              "vulnConfidentialityImpact": "HIGH",
+              "vulnIntegrityImpact": "HIGH",
+              "vulnerabilityResponseEffort": "NOT_DEFINED"
+            },
+            "format": "CVSS",
+            "scenarios": [
+              {
+                "lang": "en",
+                "value": "GENERAL"
+              }
+            ]
           }
         ],
-        "timeline": [
+        "problemTypes": [
           {
-            "time": "2026-02-05T00:00:00.000Z",
-            "lang": "en",
-            "value": "Advisory disclosed"
-          },
-          {
-            "time": "2026-02-05T01:00:00.000Z",
-            "lang": "en",
-            "value": "VulDB entry created"
-          },
-          {
-            "time": "2026-02-05T20:33:40.000Z",
-            "lang": "en",
-            "value": "VulDB entry last update"
+            "descriptions": [
+              {
+                "cweId": "CWE-79",
+                "description": "CWE-79 - XSS",
+                "lang": "en",
+                "type": "CWE"
+              }
+            ]
           }
         ],
-        "credits": [
-          {
-            "lang": "en",
-            "value": "tianrenu (VulDB User)",
-            "type": "reporter"
-          }
-        ],
+        "providerMetadata": {
+          "orgId": "64c5ae8f-7972-4697-86a0-7ada793ac795",
+          "shortName": "TCS-CERT",
+          "dateUpdated": "2026-02-11T14:53:20.753Z"
+        },
         "references": [
           {
-            "url": "https://vuldb.com/?id.344593",
-            "name": "VDB-344593 | itsourcecode Student Management System controller.php sql injection",
-            "tags": [
-              "vdb-entry",
-              "technical-description"
-            ]
-          },
-          {
-            "url": "https://vuldb.com/?ctiid.344593",
-            "name": "VDB-344593 | CTI Indicators (IOB, IOC, TTP, IOA)",
-            "tags": [
-              "signature",
-              "permissions-required"
-            ]
-          },
-          {
-            "url": "https://vuldb.com/?submit.743498",
-            "name": "Submit #743498 | itsourcecode Student Management System V1.0 SQL Injection",
-            "tags": [
-              "third-party-advisory"
-            ]
-          },
-          {
-            "url": "https://github.com/tianrenu/CVE-Discoveries/issues/1",
-            "tags": [
-              "exploit",
-              "issue-tracking"
-            ]
-          },
-          {
-            "url": "https://itsourcecode.com/",
-            "tags": [
-              "product"
-            ]
+            "url": "https://cds.thalesgroup.com/en/tcs-cert/CVE-2026-2344"
           }
         ],
-        "tags": [
-          "x_freeware"
-        ]
+        "solutions": [
+          {
+            "lang": "en",
+            "supportingMedia": [
+              {
+                "base64": false,
+                "type": "text/html",
+                "value": "Upgrade <b>Plunet BusinessManager</b> to version <strong>10.20</strong>&nbsp;or later, which includes a fix for the identified cross-site scripting vulnerabilities.\n\n<br>"
+              }
+            ],
+            "value": "Upgrade Plunet BusinessManager to version 10.20 or later, which includes a fix for the identified cross-site scripting vulnerabilities."
+          }
+        ],
+        "source": {
+          "discovery": "UNKNOWN"
+        },
+        "title": "Stored XSS on Plunet BusinessManager",
+        "x_generator": {
+          "engine": "Vulnogram 0.5.0"
+        }
       },
       "adp": [
         {
@@ -1691,14 +901,14 @@
               "other": {
                 "type": "ssvc",
                 "content": {
-                  "timestamp": "2026-02-06T16:50:23.357862Z",
-                  "id": "CVE-2026-2011",
+                  "timestamp": "2026-02-11T21:19:35.723887Z",
+                  "id": "CVE-2026-2344",
                   "options": [
                     {
                       "Exploitation": "none"
                     },
                     {
-                      "Automatable": "yes"
+                      "Automatable": "no"
                     },
                     {
                       "Technical Impact": "partial"
@@ -1714,11 +924,543 @@
           "providerMetadata": {
             "orgId": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
             "shortName": "CISA-ADP",
-            "dateUpdated": "2026-02-06T16:51:19.633Z"
+            "dateUpdated": "2026-02-11T21:19:41.145Z"
           }
         }
       ]
     },
-    "_fetched_at": "2026-02-13T10:11:24.049431"
+    "_fetched_at": "2026-02-13T00:52:20.701778Z"
+  },
+  {
+    "dataType": "CVE_RECORD",
+    "dataVersion": "5.2",
+    "cveMetadata": {
+      "cveId": "CVE-2026-2337",
+      "assignerOrgId": "64c5ae8f-7972-4697-86a0-7ada793ac795",
+      "state": "PUBLISHED",
+      "assignerShortName": "TCS-CERT",
+      "dateReserved": "11-02-2026",
+      "datePublished": "11-02-2026",
+      "dateUpdated": "11-02-2026",
+      "timeUpdated": "14:19:29"
+    },
+    "containers": {
+      "cna": {
+        "affected": [
+          {
+            "defaultStatus": "unaffected",
+            "product": "Plunet BusinessManager",
+            "vendor": "Plunet",
+            "versions": [
+              {
+                "status": "affected",
+                "version": "10.15.1"
+              },
+              {
+                "status": "unaffected",
+                "version": "10.22.4"
+              }
+            ]
+          }
+        ],
+        "datePublic": "2026-02-11T13:20:00.000Z",
+        "descriptions": [
+          {
+            "lang": "en",
+            "supportingMedia": [
+              {
+                "base64": false,
+                "type": "text/html",
+                "value": "A vulnerability in Plunet Plunet BusinessManager allows session hijacking, data theft, unauthorized actions on behalf of the user.<p>This issue affects Plunet BusinessManager: 10.15.1.</p>"
+              }
+            ],
+            "value": "A vulnerability in Plunet Plunet BusinessManager allows session hijacking, data theft, unauthorized actions on behalf of the user.This issue affects Plunet BusinessManager: 10.15.1."
+          }
+        ],
+        "impacts": [
+          {
+            "descriptions": [
+              {
+                "lang": "en",
+                "value": "session hijacking"
+              }
+            ]
+          },
+          {
+            "descriptions": [
+              {
+                "lang": "en",
+                "value": "data theft"
+              }
+            ]
+          },
+          {
+            "descriptions": [
+              {
+                "lang": "en",
+                "value": "unauthorized actions on behalf of the user"
+              }
+            ]
+          }
+        ],
+        "metrics": [
+          {
+            "cvssV4_0": {
+              "Automatable": "NOT_DEFINED",
+              "Recovery": "NOT_DEFINED",
+              "Safety": "NOT_DEFINED",
+              "attackComplexity": "LOW",
+              "attackRequirements": "NONE",
+              "attackVector": "NETWORK",
+              "baseScore": 8.7,
+              "baseSeverity": "HIGH",
+              "exploitMaturity": "NOT_DEFINED",
+              "privilegesRequired": "NONE",
+              "providerUrgency": "NOT_DEFINED",
+              "subAvailabilityImpact": "NONE",
+              "subConfidentialityImpact": "LOW",
+              "subIntegrityImpact": "LOW",
+              "userInteraction": "PASSIVE",
+              "valueDensity": "NOT_DEFINED",
+              "vectorString": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:H/VI:H/VA:L/SC:L/SI:L/SA:N",
+              "version": "4.0",
+              "vulnAvailabilityImpact": "LOW",
+              "vulnConfidentialityImpact": "HIGH",
+              "vulnIntegrityImpact": "HIGH",
+              "vulnerabilityResponseEffort": "NOT_DEFINED"
+            },
+            "format": "CVSS",
+            "scenarios": [
+              {
+                "lang": "en",
+                "value": "GENERAL"
+              }
+            ]
+          }
+        ],
+        "problemTypes": [
+          {
+            "descriptions": [
+              {
+                "cweId": "CWE-79",
+                "description": "CWE-79 - XSS",
+                "lang": "en",
+                "type": "CWE"
+              }
+            ]
+          }
+        ],
+        "providerMetadata": {
+          "orgId": "64c5ae8f-7972-4697-86a0-7ada793ac795",
+          "shortName": "TCS-CERT",
+          "dateUpdated": "2026-02-11T13:28:30.034Z"
+        },
+        "references": [
+          {
+            "url": "https://cds.thalesgroup.com/en/tcs-cert/CVE-2026-2337"
+          }
+        ],
+        "solutions": [
+          {
+            "lang": "en",
+            "supportingMedia": [
+              {
+                "base64": false,
+                "type": "text/html",
+                "value": "Upgrade <b>Plunet BusinessManager</b> to version <strong>10.22.4</strong> or later, which includes a fix for the identified cross-site scripting vulnerabilities."
+              }
+            ],
+            "value": "Upgrade Plunet BusinessManager to version 10.22.4 or later, which includes a fix for the identified cross-site scripting vulnerabilities."
+          }
+        ],
+        "source": {
+          "discovery": "UNKNOWN"
+        },
+        "title": "Refleccted XSS on Plunet BusinessManager",
+        "x_generator": {
+          "engine": "Vulnogram 0.5.0"
+        }
+      },
+      "adp": [
+        {
+          "metrics": [
+            {
+              "other": {
+                "type": "ssvc",
+                "content": {
+                  "timestamp": "2026-02-11T14:19:22.609703Z",
+                  "id": "CVE-2026-2337",
+                  "options": [
+                    {
+                      "Exploitation": "none"
+                    },
+                    {
+                      "Automatable": "yes"
+                    },
+                    {
+                      "Technical Impact": "total"
+                    }
+                  ],
+                  "role": "CISA Coordinator",
+                  "version": "2.0.3"
+                }
+              }
+            }
+          ],
+          "title": "CISA ADP Vulnrichment",
+          "providerMetadata": {
+            "orgId": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+            "shortName": "CISA-ADP",
+            "dateUpdated": "2026-02-11T14:19:29.316Z"
+          }
+        }
+      ]
+    },
+    "_fetched_at": "2026-02-13T00:52:20.751946Z"
+  },
+  {
+    "dataType": "CVE_RECORD",
+    "dataVersion": "5.2",
+    "cveMetadata": {
+      "cveId": "CVE-2026-2323",
+      "assignerOrgId": "ebfee0ef-53dd-4cf3-9e2a-08a5bd7a7e28",
+      "state": "PUBLISHED",
+      "assignerShortName": "Chrome",
+      "dateReserved": "10-02-2026",
+      "datePublished": "11-02-2026",
+      "dateUpdated": "12-02-2026",
+      "timeUpdated": "17:01:31"
+    },
+    "containers": {
+      "cna": {
+        "affected": [
+          {
+            "vendor": "Google",
+            "product": "Chrome",
+            "versions": [
+              {
+                "version": "145.0.7632.45",
+                "status": "affected",
+                "lessThan": "145.0.7632.45",
+                "versionType": "custom"
+              }
+            ]
+          }
+        ],
+        "descriptions": [
+          {
+            "lang": "en",
+            "value": "Inappropriate implementation in Downloads in Google Chrome prior to 145.0.7632.45 allowed a remote attacker to perform UI spoofing via a crafted HTML page. (Chromium security severity: Low)"
+          }
+        ],
+        "problemTypes": [
+          {
+            "descriptions": [
+              {
+                "lang": "en",
+                "description": "Inappropriate implementation"
+              }
+            ]
+          }
+        ],
+        "providerMetadata": {
+          "orgId": "ebfee0ef-53dd-4cf3-9e2a-08a5bd7a7e28",
+          "shortName": "Chrome",
+          "dateUpdated": "2026-02-11T18:08:06.261Z"
+        },
+        "references": [
+          {
+            "url": "https://chromereleases.googleblog.com/2026/02/stable-channel-update-for-desktop_10.html"
+          },
+          {
+            "url": "https://issues.chromium.org/issues/467442136"
+          }
+        ]
+      },
+      "adp": [
+        {
+          "problemTypes": [
+            {
+              "descriptions": [
+                {
+                  "type": "CWE",
+                  "cweId": "CWE-451",
+                  "lang": "en",
+                  "description": "CWE-451 User Interface (UI) Misrepresentation of Critical Information"
+                }
+              ]
+            }
+          ],
+          "metrics": [
+            {
+              "cvssV3_1": {
+                "scope": "UNCHANGED",
+                "version": "3.1",
+                "baseScore": 4.3,
+                "attackVector": "NETWORK",
+                "baseSeverity": "MEDIUM",
+                "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N",
+                "integrityImpact": "LOW",
+                "userInteraction": "REQUIRED",
+                "attackComplexity": "LOW",
+                "availabilityImpact": "NONE",
+                "privilegesRequired": "NONE",
+                "confidentialityImpact": "NONE"
+              }
+            },
+            {
+              "other": {
+                "type": "ssvc",
+                "content": {
+                  "timestamp": "2026-02-11T20:19:07.862649Z",
+                  "id": "CVE-2026-2323",
+                  "options": [
+                    {
+                      "Exploitation": "none"
+                    },
+                    {
+                      "Automatable": "no"
+                    },
+                    {
+                      "Technical Impact": "partial"
+                    }
+                  ],
+                  "role": "CISA Coordinator",
+                  "version": "2.0.3"
+                }
+              }
+            }
+          ],
+          "title": "CISA ADP Vulnrichment",
+          "providerMetadata": {
+            "orgId": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+            "shortName": "CISA-ADP",
+            "dateUpdated": "2026-02-12T17:01:31.747Z"
+          }
+        }
+      ]
+    },
+    "_fetched_at": "2026-02-13T00:52:20.853202Z"
+  },
+  {
+    "dataType": "CVE_RECORD",
+    "dataVersion": "5.2",
+    "cveMetadata": {
+      "cveId": "CVE-2026-2322",
+      "assignerOrgId": "ebfee0ef-53dd-4cf3-9e2a-08a5bd7a7e28",
+      "state": "PUBLISHED",
+      "assignerShortName": "Chrome",
+      "dateReserved": "10-02-2026",
+      "datePublished": "11-02-2026",
+      "dateUpdated": "12-02-2026",
+      "timeUpdated": "14:05:40"
+    },
+    "containers": {
+      "cna": {
+        "affected": [
+          {
+            "vendor": "Google",
+            "product": "Chrome",
+            "versions": [
+              {
+                "version": "145.0.7632.45",
+                "status": "affected",
+                "lessThan": "145.0.7632.45",
+                "versionType": "custom"
+              }
+            ]
+          }
+        ],
+        "descriptions": [
+          {
+            "lang": "en",
+            "value": "Inappropriate implementation in File input in Google Chrome prior to 145.0.7632.45 allowed a remote attacker who convinced a user to engage in specific UI gestures to perform UI spoofing via a crafted HTML page. (Chromium security severity: Low)"
+          }
+        ],
+        "problemTypes": [
+          {
+            "descriptions": [
+              {
+                "lang": "en",
+                "description": "Inappropriate implementation"
+              }
+            ]
+          }
+        ],
+        "providerMetadata": {
+          "orgId": "ebfee0ef-53dd-4cf3-9e2a-08a5bd7a7e28",
+          "shortName": "Chrome",
+          "dateUpdated": "2026-02-11T18:08:05.832Z"
+        },
+        "references": [
+          {
+            "url": "https://chromereleases.googleblog.com/2026/02/stable-channel-update-for-desktop_10.html"
+          },
+          {
+            "url": "https://issues.chromium.org/issues/470928605"
+          }
+        ]
+      },
+      "adp": [
+        {
+          "problemTypes": [
+            {
+              "descriptions": [
+                {
+                  "type": "CWE",
+                  "cweId": "CWE-451",
+                  "lang": "en",
+                  "description": "CWE-451 User Interface (UI) Misrepresentation of Critical Information"
+                }
+              ]
+            }
+          ],
+          "metrics": [
+            {
+              "cvssV3_1": {
+                "scope": "UNCHANGED",
+                "version": "3.1",
+                "baseScore": 5.4,
+                "attackVector": "NETWORK",
+                "baseSeverity": "MEDIUM",
+                "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:L",
+                "integrityImpact": "LOW",
+                "userInteraction": "REQUIRED",
+                "attackComplexity": "LOW",
+                "availabilityImpact": "LOW",
+                "privilegesRequired": "NONE",
+                "confidentialityImpact": "NONE"
+              }
+            },
+            {
+              "other": {
+                "type": "ssvc",
+                "content": {
+                  "timestamp": "2026-02-11T20:48:12.604444Z",
+                  "id": "CVE-2026-2322",
+                  "options": [
+                    {
+                      "Exploitation": "none"
+                    },
+                    {
+                      "Automatable": "no"
+                    },
+                    {
+                      "Technical Impact": "partial"
+                    }
+                  ],
+                  "role": "CISA Coordinator",
+                  "version": "2.0.3"
+                }
+              }
+            }
+          ],
+          "title": "CISA ADP Vulnrichment",
+          "providerMetadata": {
+            "orgId": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+            "shortName": "CISA-ADP",
+            "dateUpdated": "2026-02-12T14:05:40.432Z"
+          }
+        }
+      ]
+    },
+    "_fetched_at": "2026-02-13T00:52:20.902940Z"
+  },
+  {
+    "dataType": "CVE_RECORD",
+    "dataVersion": "5.2",
+    "cveMetadata": {
+      "cveId": "CVE-2026-2321",
+      "assignerOrgId": "ebfee0ef-53dd-4cf3-9e2a-08a5bd7a7e28",
+      "state": "PUBLISHED",
+      "assignerShortName": "Chrome",
+      "dateReserved": "10-02-2026",
+      "datePublished": "11-02-2026",
+      "dateUpdated": "12-02-2026",
+      "timeUpdated": "04:55:21"
+    },
+    "containers": {
+      "cna": {
+        "affected": [
+          {
+            "vendor": "Google",
+            "product": "Chrome",
+            "versions": [
+              {
+                "version": "145.0.7632.45",
+                "status": "affected",
+                "lessThan": "145.0.7632.45",
+                "versionType": "custom"
+              }
+            ]
+          }
+        ],
+        "descriptions": [
+          {
+            "lang": "en",
+            "value": "Use after free in Ozone in Google Chrome prior to 145.0.7632.45 allowed a remote attacker who convinced a user to engage in specific UI gestures to potentially exploit heap corruption via a crafted HTML page. (Chromium security severity: Medium)"
+          }
+        ],
+        "problemTypes": [
+          {
+            "descriptions": [
+              {
+                "lang": "en",
+                "description": "Use after free",
+                "cweId": "CWE-416"
+              }
+            ]
+          }
+        ],
+        "providerMetadata": {
+          "orgId": "ebfee0ef-53dd-4cf3-9e2a-08a5bd7a7e28",
+          "shortName": "Chrome",
+          "dateUpdated": "2026-02-11T18:08:05.439Z"
+        },
+        "references": [
+          {
+            "url": "https://chromereleases.googleblog.com/2026/02/stable-channel-update-for-desktop_10.html"
+          },
+          {
+            "url": "https://issues.chromium.org/issues/461877477"
+          }
+        ]
+      },
+      "adp": [
+        {
+          "title": "CISA ADP Vulnrichment",
+          "metrics": [
+            {
+              "other": {
+                "type": "ssvc",
+                "content": {
+                  "timestamp": "2026-02-11T00:00:00+00:00",
+                  "options": [
+                    {
+                      "Exploitation": "none"
+                    },
+                    {
+                      "Automatable": "no"
+                    },
+                    {
+                      "Technical Impact": "total"
+                    }
+                  ],
+                  "role": "CISA Coordinator",
+                  "version": "2.0.3",
+                  "id": "CVE-2026-2321"
+                }
+              }
+            }
+          ],
+          "providerMetadata": {
+            "orgId": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+            "shortName": "CISA-ADP",
+            "dateUpdated": "2026-02-12T04:55:21.843Z"
+          }
+        }
+      ]
+    },
+    "_fetched_at": "2026-02-13T00:52:20.952761Z"
   }
 ]
