@@ -57,19 +57,35 @@ function Ensure-GitHubToken {
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $venvPath = Join-Path $repoRoot ".venv"
 $venvPython = Join-Path $venvPath "Scripts\python.exe"
+$requirementsPath = Join-Path $repoRoot "requirements.txt"
+$requirementsStampPath = Join-Path $venvPath ".requirements.sha256"
 
 Ensure-GitHubToken -Mode $Mode
 
+$venvCreated = $false
 if (-not (Test-Path $venvPython)) {
     if (Get-Command py -ErrorAction SilentlyContinue) {
         Invoke-Step "Creating virtual environment with py" { py -3 -m venv $venvPath }
     } else {
         Invoke-Step "Creating virtual environment with python" { python -m venv $venvPath }
     }
+    $venvCreated = $true
 }
 
-Invoke-Step "Upgrading pip" { & $venvPython -m pip install --upgrade pip }
-Invoke-Step "Installing dependencies" { & $venvPython -m pip install -r (Join-Path $repoRoot "requirements.txt") }
+$requirementsHash = (Get-FileHash -Path $requirementsPath -Algorithm SHA256).Hash
+$storedHash = ""
+if (Test-Path $requirementsStampPath) {
+    $storedHash = (Get-Content $requirementsStampPath -ErrorAction SilentlyContinue | Select-Object -First 1).Trim()
+}
+$requirementsChanged = ($requirementsHash -ne $storedHash)
+
+if ($venvCreated -or $requirementsChanged) {
+    Invoke-Step "Upgrading pip" { & $venvPython -m pip install --upgrade pip }
+    Invoke-Step "Installing dependencies" { & $venvPython -m pip install -r $requirementsPath }
+    Set-Content -Path $requirementsStampPath -Value $requirementsHash -Encoding UTF8
+} else {
+    Write-Host "[Runner] Requirements unchanged. Skipping dependency install."
+}
 
 $scriptMap = @{
     "main"  = "main.py"

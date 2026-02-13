@@ -1,39 +1,45 @@
 ﻿# Python Scraper Webhook
 
-Collects CVEs and cybersecurity news on a 15-minute schedule.
+Collects CVEs and cybersecurity news every 15 minutes with deduplication, safe writes, rate controls, and run/session logging.
 
-## What It Does
+## Core Behavior
 
 - `cve_scraper.py`
   - Pulls CVEs from CVEProject GitHub
-  - Saves to `data/cves.json`
-  - Keeps max 10 records (controlled by `MAX_CVES` at top of file)
+  - Stores compact records in `data/cves.json`
+  - Keeps max `MAX_CVES` (default 10)
   - Dedup key: `cveMetadata.cveId`
-  - Sort order: newest by `datePublished` (fallback: `dateReserved`, `dateUpdated`, `_fetched_at`)
-  - Startup log shows auth state (`token detected` / `no token`) and per-run API budget
-  - Per-run GitHub API budget: `GITHUB_MAX_API_CALLS_PER_RUN = 80`
-  - Safety note: with 15-minute schedule, this stays under 500 requests/hour even with startup run timing
+  - Sort order: `datePublished` -> `dateReserved` -> `dateUpdated` -> `_fetched_at`
+  - CVE API budget per run: `GITHUB_MAX_API_CALLS_PER_RUN` (default 80)
 
 - `news_scraper.py`
   - Pulls headlines from CyberDaily AU
-  - Saves to `data/cybersecurity_news.json`
-  - Keeps max 10 records (controlled by `MAX_HEADLINES` at top of file)
+  - Stores in `data/cybersecurity_news.json`
+  - Keeps max `MAX_HEADLINES` (default 10)
   - Dedup key: canonicalized `title + URL`
+  - Newest entries first by `fetched_at`
 
 - `main.py`
   - Runs both scrapers every 15 minutes
   - Runs once immediately on start
-  - Performs duplicate cleanup checks
-  - Creates one log file per process run in `logs/` and appends each 15-minute cycle to that same file
+  - Creates one log file per scheduler process run in `logs/`
+  - Rotates logs (keeps newest 30 by default)
+  - Writes run metadata to `data/runtime_status.json`
 
-## Recommended Run (No Manual Venv)
+## Reliability and Security Controls
 
-Use the runner scripts. They auto-create `.venv` (if missing) and install dependencies.
-For `main`/`cve` modes, the runner also:
-- loads `GITHUB_TOKEN` from user environment if available
-- prompts for a token (hidden input) if none is found
+- Atomic JSON writes for data/status files
+- Lock files prevent overlapping writers:
+  - `data/.scheduler.lock`
+  - `data/.cves.lock`
+  - `data/.news.lock`
+- HTTP retries with backoff+jitter for transient errors (429/5xx/network)
+- Host/content-size/type validation on fetched data
+- Optional verbose logs: set `SCRAPER_VERBOSE=1`
 
-Windows (PowerShell):
+## Quick Start (No Manual Venv)
+
+### Windows (PowerShell)
 
 ```powershell
 .\run.ps1 main
@@ -42,7 +48,7 @@ Windows (PowerShell):
 .\run.ps1 check
 ```
 
-Windows (CMD):
+### Windows (CMD)
 
 ```bat
 run.bat main
@@ -51,7 +57,7 @@ run.bat news
 run.bat check
 ```
 
-Linux/macOS (bash):
+### Linux/macOS (bash)
 
 ```bash
 ./run.sh main
@@ -60,13 +66,22 @@ Linux/macOS (bash):
 ./run.sh check
 ```
 
-## VS Code Tasks
+Runner behavior:
+- Auto-creates `.venv` if missing
+- Installs dependencies only when `requirements.txt` hash changes (`.venv/.requirements.sha256`)
+- For `main`/`cve`, loads `GITHUB_TOKEN` from environment or prompts for one
 
-- `Run Scrapers (15-minute schedule)`
-- `Run CVE Scraper Only`
-- `Run News Scraper Only`
+## Data and Runtime Files
 
-These tasks call `run.ps1` directly.
+- `data/cves.json`
+- `data/cybersecurity_news.json`
+- `data/runtime_status.json`
+  - `last_run_started_at`
+  - `last_run_completed_at`
+  - `last_run_result` (`success`/`partial`/`failure`)
+  - `last_successful_run_at`
+  - per-scraper summary stats
+- `logs/scraper_run_YYYYMMDD_HHMMSS.log`
 
 ## Manual Run (Optional)
 
@@ -76,8 +91,10 @@ If dependencies are already installed:
 python main.py
 ```
 
-## Data Files
+## Validation
 
-- `data/cves.json`: max 10, deduped by CVE ID, newest first
-- `data/cybersecurity_news.json`: max 10, deduped by canonical title+URL, newest first
-- `logs/scraper_run_YYYYMMDD_HHMMSS.log`: one file per scheduler start
+Compile check:
+
+```powershell
+python -m py_compile cve_scraper.py news_scraper.py deduplication.py main.py check_data.py runtime_lock.py
+```

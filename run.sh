@@ -42,19 +42,34 @@ ensure_github_token() {
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="${REPO_ROOT}/.venv"
 VENV_PYTHON="${VENV_DIR}/bin/python"
+REQUIREMENTS_PATH="${REPO_ROOT}/requirements.txt"
+REQUIREMENTS_STAMP_PATH="${VENV_DIR}/.requirements.sha256"
 
 ensure_github_token
 
+venv_created=0
 if [[ ! -x "$VENV_PYTHON" ]]; then
   if command -v python3 >/dev/null 2>&1; then
     step "Creating virtual environment with python3" python3 -m venv "$VENV_DIR"
   else
     step "Creating virtual environment with python" python -m venv "$VENV_DIR"
   fi
+  venv_created=1
 fi
 
-step "Upgrading pip" "$VENV_PYTHON" -m pip install --upgrade pip
-step "Installing dependencies" "$VENV_PYTHON" -m pip install -r "${REPO_ROOT}/requirements.txt"
+requirements_hash="$("$VENV_PYTHON" -c "import hashlib, pathlib; print(hashlib.sha256(pathlib.Path(r'${REQUIREMENTS_PATH}').read_bytes()).hexdigest())")"
+stored_hash=""
+if [[ -f "$REQUIREMENTS_STAMP_PATH" ]]; then
+  stored_hash="$(head -n 1 "$REQUIREMENTS_STAMP_PATH" | tr -d '[:space:]')"
+fi
+
+if [[ "$venv_created" -eq 1 || "$requirements_hash" != "$stored_hash" ]]; then
+  step "Upgrading pip" "$VENV_PYTHON" -m pip install --upgrade pip
+  step "Installing dependencies" "$VENV_PYTHON" -m pip install -r "${REQUIREMENTS_PATH}"
+  printf "%s\n" "$requirements_hash" > "$REQUIREMENTS_STAMP_PATH"
+else
+  echo "[Runner] Requirements unchanged. Skipping dependency install."
+fi
 
 case "$MODE" in
   main) SCRIPT="main.py" ;;

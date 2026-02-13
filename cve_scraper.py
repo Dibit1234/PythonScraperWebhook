@@ -5,11 +5,13 @@ import os
 import re
 import tempfile
 import time
+import random
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
+from runtime_lock import FileLock
 
 DATA_FILE = "data/cves.json"
 GITHUB_API_BASE = "https://api.github.com/repos/CVEProject/cvelistV5/contents"
@@ -25,6 +27,11 @@ AUTHENTICATED_MIN_REQUEST_INTERVAL_SECONDS = 0.05
 # (immediate startup run + every 15 minutes), so keep this <= 100.
 GITHUB_MAX_API_CALLS_PER_RUN = 80
 MAX_RATE_LIMIT_WAIT_SECONDS = 30
+HTTP_MAX_RETRIES = 3
+HTTP_BACKOFF_BASE_SECONDS = 0.5
+HTTP_BACKOFF_JITTER_MAX_SECONDS = 0.3
+FILE_LOCK_TIMEOUT_SECONDS = 3
+FILE_LOCK_STALE_SECONDS = 600
 
 _SESSION = requests.Session()
 _LAST_GITHUB_REQUEST_TS = 0.0
@@ -33,6 +40,16 @@ _GITHUB_API_CALLS_THIS_RUN = 0
 CVSS_PRIORITY = ("cvssV4_0", "cvssV3_1", "cvssV3_0", "cvssV2_0")
 MAX_DETAIL_CHUNKS = 6
 MAX_CHUNK_LENGTH = 220
+VERBOSE = os.getenv("SCRAPER_VERBOSE", "0") == "1"
+
+
+def _log(message):
+    print(message)
+
+
+def _vlog(message):
+    if VERBOSE:
+        print(message)
 
 
 def _has_github_token():
@@ -115,15 +132,23 @@ def _request_json(url, timeout=10):
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    for attempt in range(2):
+    response = None
+    for attempt in range(HTTP_MAX_RETRIES):
         _consume_api_call_budget()
         _throttle_if_needed()
-        response = _SESSION.get(url, timeout=timeout, headers=headers)
+        try:
+            response = _SESSION.get(url, timeout=timeout, headers=headers)
+        except requests.exceptions.RequestException:
+            if attempt == HTTP_MAX_RETRIES - 1:
+                raise
+            backoff = HTTP_BACKOFF_BASE_SECONDS * (2 ** attempt) + random.uniform(0, HTTP_BACKOFF_JITTER_MAX_SECONDS)
+            time.sleep(backoff)
+            continue
 
         wait_seconds = _rate_limit_wait_seconds(response)
         if response.status_code == 403 and wait_seconds:
-            if wait_seconds <= MAX_RATE_LIMIT_WAIT_SECONDS and attempt == 0:
-                print(f"[CVE Scraper] GitHub rate limit hit, waiting {wait_seconds}s before retry...")
+            if wait_seconds <= MAX_RATE_LIMIT_WAIT_SECONDS and attempt < HTTP_MAX_RETRIES - 1:
+                _log(f"[CVE Scraper] GitHub rate limit hit, waiting {wait_seconds}s before retry...")
                 time.sleep(wait_seconds)
                 continue
             raise RuntimeError(
@@ -131,8 +156,18 @@ def _request_json(url, timeout=10):
                 "Set GITHUB_TOKEN or retry after reset."
             )
 
+        if response.status_code == 429 or response.status_code >= 500:
+            if attempt == HTTP_MAX_RETRIES - 1:
+                response.raise_for_status()
+            backoff = HTTP_BACKOFF_BASE_SECONDS * (2 ** attempt) + random.uniform(0, HTTP_BACKOFF_JITTER_MAX_SECONDS)
+            time.sleep(backoff)
+            continue
+
         response.raise_for_status()
         break
+
+    if response is None:
+        raise RuntimeError(f"Failed to request URL: {url}")
 
     final_url = response.url or url
     if not _is_allowed_url(final_url, ALLOWED_JSON_HOSTS):
@@ -167,6 +202,14 @@ def _parse_iso_datetime(value):
         except ValueError:
             continue
     return None
+
+
+def _to_utc_z(value):
+    parsed = _parse_iso_datetime(value)
+    if not parsed:
+        return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    normalized = parsed.astimezone(timezone.utc)
+    return normalized.isoformat().replace("+00:00", "Z")
 
 
 def _parse_date_with_optional_time(date_str, time_str="00:00:00"):
@@ -216,6 +259,30 @@ def _is_valid_cve_record(cve):
         return False
     cve_id = cve.get("cveMetadata", {}).get("cveId", "")
     return bool(CVE_ID_PATTERN.fullmatch(cve_id))
+
+
+def _is_valid_compact_cve_record(cve):
+    if not _is_valid_cve_record(cve):
+        return False
+
+    fetched = cve.get("_fetched_at")
+    if not isinstance(fetched, str) or not _parse_iso_datetime(fetched):
+        return False
+
+    summary = cve.get("summary")
+    if not isinstance(summary, dict):
+        return False
+    if not isinstance(summary.get("title"), str) or not summary.get("title").strip():
+        return False
+    if not isinstance(summary.get("level"), str) or not summary.get("level").strip():
+        return False
+    details = summary.get("details")
+    if not isinstance(details, list):
+        return False
+    if not all(isinstance(item, str) for item in details):
+        return False
+
+    return True
 
 
 def _split_text_chunks(text, max_chunk_length=MAX_CHUNK_LENGTH):
@@ -410,7 +477,7 @@ def compact_cve_record(cve):
             "dateUpdated": metadata.get("dateUpdated", ""),
             "timeUpdated": metadata.get("timeUpdated", ""),
         },
-        "_fetched_at": cve.get("_fetched_at", datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")),
+        "_fetched_at": _to_utc_z(cve.get("_fetched_at")),
     }
 
     if "summary" in cve and isinstance(cve.get("summary"), dict):
@@ -436,6 +503,8 @@ def compact_cve_record(cve):
             "targets": summary.get("targets", [])[:6],
             "details": normalized_details[:MAX_DETAIL_CHUNKS],
         }
+        if not compact["summary"]["details"]:
+            compact["summary"]["details"] = [compact["summary"]["title"]]
         return compact
 
     compact["summary"] = _build_compact_summary(cve)
@@ -467,9 +536,9 @@ def format_cve_dates(cve):
 def get_recent_cves(limit=MAX_CVES):
     """Fetch recent CVEs from CVEProject."""
     try:
-        print(f"[CVE Scraper] Fetching {limit} most recent CVEs from GitHub...")
+        _log(f"[CVE Scraper] Fetching {limit} most recent CVEs from GitHub...")
         _reset_github_rate_state()
-        print(
+        _log(
             "[CVE Scraper] Auth: "
             f"{'token detected' if _has_github_token() else 'no token'} | "
             f"API budget this run: {GITHUB_MAX_API_CALLS_PER_RUN} requests"
@@ -518,7 +587,7 @@ def get_recent_cves(limit=MAX_CVES):
 
                         cve_json["_fetched_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
                         cves_data.append(compact_cve_record(format_cve_dates(cve_json)))
-                        print(
+                        _vlog(
                             f"  [ok] Fetched CVE from {year}/{dir_name}/{file_item.get('name', '')}"
                         )
 
@@ -529,69 +598,113 @@ def get_recent_cves(limit=MAX_CVES):
                         break
 
             except Exception as e:
-                print(f"[CVE Scraper] Skipping year {year}: {e}")
+                _log(f"[CVE Scraper] Skipping year {year}: {e}")
                 if "rate limit exceeded" in str(e).lower():
                     break
                 continue
 
+            if len(cves_data) >= limit:
+                break
+
         cves_data.sort(key=_cve_sort_key, reverse=True)
-        print(f"[CVE Scraper] Successfully fetched {len(cves_data)} CVEs")
+        _log(f"[CVE Scraper] Successfully fetched {len(cves_data)} CVEs")
         return cves_data[:limit]
 
     except requests.exceptions.RequestException as e:
-        print(f"[CVE Scraper] Error fetching CVEs: {str(e)}")
+        _log(f"[CVE Scraper] Error fetching CVEs: {str(e)}")
         return []
 
 
 def save_cves(cves_data):
     """Merge CVEs into local storage, newest first."""
+    stats = {
+        "saved_new": 0,
+        "total_after": 0,
+        "dropped_invalid": 0,
+        "deduped": 0,
+        "ok": False,
+    }
     try:
         Path("data").mkdir(exist_ok=True)
+        lock = FileLock("data/.cves.lock", timeout_seconds=FILE_LOCK_TIMEOUT_SECONDS, stale_seconds=FILE_LOCK_STALE_SECONDS)
+        with lock:
+            existing_cves = []
+            if os.path.exists(DATA_FILE):
+                try:
+                    with open(DATA_FILE, "r", encoding="utf-8") as f:
+                        existing_data = json.load(f)
+                        if isinstance(existing_data, list):
+                            existing_cves = existing_data
+                        elif isinstance(existing_data, dict) and "cves" in existing_data:
+                            existing_cves = existing_data["cves"]
+                except json.JSONDecodeError:
+                    existing_cves = []
 
-        existing_cves = []
-        if os.path.exists(DATA_FILE):
-            try:
-                with open(DATA_FILE, "r", encoding="utf-8") as f:
-                    existing_data = json.load(f)
-                    if isinstance(existing_data, list):
-                        existing_cves = existing_data
-                    elif isinstance(existing_data, dict) and "cves" in existing_data:
-                        existing_cves = existing_data["cves"]
-            except json.JSONDecodeError:
-                existing_cves = []
+            normalized_existing = []
+            for cve in existing_cves:
+                if not _is_valid_cve_record(cve):
+                    stats["dropped_invalid"] += 1
+                    continue
+                normalized = compact_cve_record(format_cve_dates(cve))
+                if not _is_valid_compact_cve_record(normalized):
+                    stats["dropped_invalid"] += 1
+                    continue
+                normalized_existing.append(normalized)
 
-        existing_cves = [compact_cve_record(format_cve_dates(cve)) for cve in existing_cves if _is_valid_cve_record(cve)]
-        incoming_cves = [compact_cve_record(format_cve_dates(cve)) for cve in cves_data if _is_valid_cve_record(cve)]
+            normalized_incoming = []
+            for cve in cves_data:
+                if not _is_valid_cve_record(cve):
+                    stats["dropped_invalid"] += 1
+                    continue
+                normalized = compact_cve_record(format_cve_dates(cve))
+                if not _is_valid_compact_cve_record(normalized):
+                    stats["dropped_invalid"] += 1
+                    continue
+                normalized_incoming.append(normalized)
 
-        merged_by_id = {}
-        for cve in existing_cves:
-            merged_by_id[cve["cveMetadata"]["cveId"]] = cve
+            merged_by_id = {}
+            for cve in normalized_existing:
+                merged_by_id[cve["cveMetadata"]["cveId"]] = cve
 
-        new_cves_added = 0
-        for cve in incoming_cves:
-            cve_id = cve["cveMetadata"]["cveId"]
-            if cve_id not in merged_by_id:
-                new_cves_added += 1
-            merged_by_id[cve_id] = cve
+            before_merge_count = len(merged_by_id)
+            for cve in normalized_incoming:
+                cve_id = cve["cveMetadata"]["cveId"]
+                if cve_id not in merged_by_id:
+                    stats["saved_new"] += 1
+                merged_by_id[cve_id] = cve
 
-        sorted_cves = sorted(merged_by_id.values(), key=_cve_sort_key, reverse=True)[:MAX_CVES]
+            stats["deduped"] = max(0, before_merge_count + len(normalized_incoming) - len(merged_by_id))
+            sorted_cves = sorted(merged_by_id.values(), key=_cve_sort_key, reverse=True)[:MAX_CVES]
+            _atomic_write_json(DATA_FILE, sorted_cves)
 
-        _atomic_write_json(DATA_FILE, sorted_cves)
-
-        print(f"[CVE Scraper] Saved {new_cves_added} new CVEs to {DATA_FILE}")
-        print(f"[CVE Scraper] Total CVEs in database (most recent): {len(sorted_cves)}")
-        return True
+        stats["total_after"] = len(sorted_cves)
+        stats["ok"] = True
+        _log(f"[CVE Scraper] Saved {stats['saved_new']} new CVEs to {DATA_FILE}")
+        _log(f"[CVE Scraper] Total CVEs in database (most recent): {len(sorted_cves)}")
+        return stats
 
     except Exception as e:
-        print(f"[CVE Scraper] Error saving CVEs: {str(e)}")
-        return False
+        _log(f"[CVE Scraper] Error saving CVEs: {str(e)}")
+        return stats
 
 
 def run_cve_scraper():
     cves = get_recent_cves(limit=MAX_CVES)
+    stats = {
+        "fetched": len(cves),
+        "saved_new": 0,
+        "total_after": 0,
+        "dropped_invalid": 0,
+        "deduped": 0,
+        "ok": True,
+    }
     if cves:
-        save_cves(cves)
-    return cves
+        save_stats = save_cves(cves)
+        stats.update({k: save_stats.get(k, stats.get(k)) for k in stats.keys() if k in save_stats})
+        stats["ok"] = bool(save_stats.get("ok"))
+    else:
+        stats["ok"] = False
+    return stats
 
 
 if __name__ == "__main__":

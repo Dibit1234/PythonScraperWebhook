@@ -4,6 +4,8 @@ import json
 import os
 import re
 import tempfile
+import random
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -11,6 +13,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 from deduplication import headline_dedup_key
+from runtime_lock import FileLock
 
 NEWS_FILE = "data/cybersecurity_news.json"
 CYBERDAILY_URL = "https://www.cyberdaily.au/"
@@ -20,6 +23,23 @@ MAX_HEADLINES = 10
 MAX_TITLE_LENGTH = 300
 MAX_LINK_LENGTH = 500
 MAX_DESCRIPTION_LENGTH = 1000
+HTTP_MAX_RETRIES = 3
+HTTP_BACKOFF_BASE_SECONDS = 0.5
+HTTP_BACKOFF_JITTER_MAX_SECONDS = 0.3
+FILE_LOCK_TIMEOUT_SECONDS = 3
+FILE_LOCK_STALE_SECONDS = 600
+VERBOSE = os.getenv("SCRAPER_VERBOSE", "0") == "1"
+
+_SESSION = requests.Session()
+
+
+def _log(message):
+    print(message)
+
+
+def _vlog(message):
+    if VERBOSE:
+        print(message)
 
 
 def _is_allowed_url(url, allowed_hosts):
@@ -49,6 +69,26 @@ def _normalize_link(link):
     return absolute[:MAX_LINK_LENGTH]
 
 
+def _parse_iso_datetime(value):
+    if not value or not isinstance(value, str):
+        return None
+    normalized = value.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    except ValueError:
+        return None
+
+
+def _to_utc_z(value):
+    parsed = _parse_iso_datetime(value)
+    if not parsed:
+        return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 def _atomic_write_json(path, data):
     parent = Path(path).parent
     parent.mkdir(exist_ok=True)
@@ -71,6 +111,9 @@ def _is_valid_headline_record(headline):
     link = headline.get("link", "")
     if not isinstance(link, str):
         return False
+    fetched_at = headline.get("fetched_at", "")
+    if not isinstance(fetched_at, str) or not _parse_iso_datetime(fetched_at):
+        return False
     return True
 
 
@@ -79,8 +122,29 @@ def _fetch_news_page():
         raise ValueError(f"Blocked URL: {CYBERDAILY_URL}")
 
     headers = {"User-Agent": "PythonScraperWebhook/1.0"}
-    response = requests.get(CYBERDAILY_URL, headers=headers, timeout=15)
-    response.raise_for_status()
+    response = None
+    for attempt in range(HTTP_MAX_RETRIES):
+        try:
+            response = _SESSION.get(CYBERDAILY_URL, headers=headers, timeout=15)
+        except requests.exceptions.RequestException:
+            if attempt == HTTP_MAX_RETRIES - 1:
+                raise
+            backoff = HTTP_BACKOFF_BASE_SECONDS * (2 ** attempt) + random.uniform(0, HTTP_BACKOFF_JITTER_MAX_SECONDS)
+            time.sleep(backoff)
+            continue
+
+        if response.status_code == 429 or response.status_code >= 500:
+            if attempt == HTTP_MAX_RETRIES - 1:
+                response.raise_for_status()
+            backoff = HTTP_BACKOFF_BASE_SECONDS * (2 ** attempt) + random.uniform(0, HTTP_BACKOFF_JITTER_MAX_SECONDS)
+            time.sleep(backoff)
+            continue
+
+        response.raise_for_status()
+        break
+
+    if response is None:
+        raise RuntimeError("Failed to fetch news page")
 
     final_url = response.url or CYBERDAILY_URL
     if not _is_allowed_url(final_url, ALLOWED_NEWS_HOSTS):
@@ -116,7 +180,7 @@ def _extract_headline_data(container):
         "category": "General",
         "link": link,
         "description": description[:MAX_DESCRIPTION_LENGTH],
-        "fetched_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "fetched_at": _to_utc_z(datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")),
         "source": "CyberDaily AU",
     }
 
@@ -124,7 +188,7 @@ def _extract_headline_data(container):
 def scrape_cyberdaily_headlines():
     """Fetch current headlines from CyberDaily."""
     try:
-        print("[News Scraper] Fetching headlines from CyberDaily AU...")
+        _log("[News Scraper] Fetching headlines from CyberDaily AU...")
         soup = _fetch_news_page()
 
         containers = soup.find_all(["article", "div"], class_=re.compile("post|article|news|headline", re.I))
@@ -145,76 +209,117 @@ def scrape_cyberdaily_headlines():
                 continue
             seen.add(key)
             headlines.append(headline)
-            print(f"  [ok] Found headline: {headline['title'][:60]}")
+            _vlog(f"  [ok] Found headline: {headline['title'][:60]}")
 
-        print(f"[News Scraper] Successfully fetched {len(headlines)} headlines")
+        _log(f"[News Scraper] Successfully fetched {len(headlines)} headlines")
         return headlines
 
     except requests.exceptions.RequestException as e:
-        print(f"[News Scraper] Error fetching CyberDaily: {str(e)}")
+        _log(f"[News Scraper] Error fetching CyberDaily: {str(e)}")
         return []
     except Exception as e:
-        print(f"[News Scraper] Unexpected error: {str(e)}")
+        _log(f"[News Scraper] Unexpected error: {str(e)}")
         return []
 
 
 def save_headlines(headlines_data):
     """Merge headlines into local storage."""
+    stats = {
+        "saved_new": 0,
+        "total_after": 0,
+        "dropped_invalid": 0,
+        "deduped": 0,
+        "ok": False,
+    }
     try:
         Path("data").mkdir(exist_ok=True)
+        lock = FileLock("data/.news.lock", timeout_seconds=FILE_LOCK_TIMEOUT_SECONDS, stale_seconds=FILE_LOCK_STALE_SECONDS)
+        with lock:
+            existing_headlines = []
+            if os.path.exists(NEWS_FILE):
+                try:
+                    with open(NEWS_FILE, "r", encoding="utf-8") as f:
+                        existing_data = json.load(f)
+                        if isinstance(existing_data, list):
+                            existing_headlines = existing_data
+                        elif isinstance(existing_data, dict) and "headlines" in existing_data:
+                            existing_headlines = existing_data["headlines"]
+                except json.JSONDecodeError:
+                    existing_headlines = []
 
-        existing_headlines = []
-        if os.path.exists(NEWS_FILE):
-            try:
-                with open(NEWS_FILE, "r", encoding="utf-8") as f:
-                    existing_data = json.load(f)
-                    if isinstance(existing_data, list):
-                        existing_headlines = existing_data
-                    elif isinstance(existing_data, dict) and "headlines" in existing_data:
-                        existing_headlines = existing_data["headlines"]
-            except json.JSONDecodeError:
-                existing_headlines = []
+            normalized_existing = []
+            for item in existing_headlines:
+                if not isinstance(item, dict):
+                    stats["dropped_invalid"] += 1
+                    continue
+                item["fetched_at"] = _to_utc_z(item.get("fetched_at"))
+                if not _is_valid_headline_record(item):
+                    stats["dropped_invalid"] += 1
+                    continue
+                normalized_existing.append(item)
 
-        existing_headlines = [h for h in existing_headlines if _is_valid_headline_record(h)]
+            normalized_incoming = []
+            for item in headlines_data:
+                if not isinstance(item, dict):
+                    stats["dropped_invalid"] += 1
+                    continue
+                item["fetched_at"] = _to_utc_z(item.get("fetched_at"))
+                if not _is_valid_headline_record(item):
+                    stats["dropped_invalid"] += 1
+                    continue
+                normalized_incoming.append(item)
 
-        merged = {}
-        for headline in existing_headlines:
-            key = headline_dedup_key(headline)
-            if not key[0]:
-                continue
-            merged[key] = headline
+            merged = {}
+            for headline in normalized_existing:
+                key = headline_dedup_key(headline)
+                if not key[0]:
+                    continue
+                merged[key] = headline
 
-        new_headlines_added = 0
-        for headline in headlines_data:
-            if not _is_valid_headline_record(headline):
-                continue
-            key = headline_dedup_key(headline)
-            if not key[0]:
-                continue
-            if key not in merged:
-                new_headlines_added += 1
-            merged[key] = headline
+            before_merge_count = len(merged)
+            for headline in normalized_incoming:
+                key = headline_dedup_key(headline)
+                if not key[0]:
+                    continue
+                if key not in merged:
+                    stats["saved_new"] += 1
+                merged[key] = headline
 
-        merged_headlines = list(merged.values())
-        merged_headlines.sort(key=lambda item: item.get("fetched_at", ""), reverse=True)
-        merged_headlines = merged_headlines[:MAX_HEADLINES]
+            stats["deduped"] = max(0, before_merge_count + len(normalized_incoming) - len(merged))
+            merged_headlines = list(merged.values())
+            merged_headlines.sort(key=lambda item: item.get("fetched_at", ""), reverse=True)
+            merged_headlines = merged_headlines[:MAX_HEADLINES]
 
-        _atomic_write_json(NEWS_FILE, merged_headlines)
+            _atomic_write_json(NEWS_FILE, merged_headlines)
 
-        print(f"[News Scraper] Saved {new_headlines_added} new headlines to {NEWS_FILE}")
-        print(f"[News Scraper] Total headlines in database: {len(merged_headlines)}")
-        return True
+        stats["total_after"] = len(merged_headlines)
+        stats["ok"] = True
+        _log(f"[News Scraper] Saved {stats['saved_new']} new headlines to {NEWS_FILE}")
+        _log(f"[News Scraper] Total headlines in database: {len(merged_headlines)}")
+        return stats
 
     except Exception as e:
-        print(f"[News Scraper] Error saving headlines: {str(e)}")
-        return False
+        _log(f"[News Scraper] Error saving headlines: {str(e)}")
+        return stats
 
 
 def run_news_scraper():
     headlines = scrape_cyberdaily_headlines()
+    stats = {
+        "fetched": len(headlines),
+        "saved_new": 0,
+        "total_after": 0,
+        "dropped_invalid": 0,
+        "deduped": 0,
+        "ok": True,
+    }
     if headlines:
-        save_headlines(headlines)
-    return headlines
+        save_stats = save_headlines(headlines)
+        stats.update({k: save_stats.get(k, stats.get(k)) for k in stats.keys() if k in save_stats})
+        stats["ok"] = bool(save_stats.get("ok"))
+    else:
+        stats["ok"] = False
+    return stats
 
 
 if __name__ == "__main__":
