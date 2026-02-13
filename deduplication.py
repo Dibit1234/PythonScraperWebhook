@@ -3,6 +3,8 @@
 import json
 import os
 import re
+import tempfile
+from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 TRACKING_PARAMS = {
@@ -35,6 +37,19 @@ def deduplicate_cves(cves_list):
             seen_ids.add(cve_id)
     
     return deduplicated
+
+
+def _atomic_write_json(path, data):
+    parent = Path(path).parent
+    parent.mkdir(exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(prefix=".tmp_", suffix=".json", dir=str(parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
+            json.dump(data, tmp_file, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 def canonicalize_title(title):
@@ -133,9 +148,7 @@ def remove_duplicate_entries_from_file(file_path, content_type='headlines'):
         else:  # headlines
             deduplicated = deduplicate_headlines(data)
         
-        # Save deduplicated data
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(deduplicated, f, indent=2, ensure_ascii=False)
+        _atomic_write_json(file_path, deduplicated)
         
         return True
         

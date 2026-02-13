@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -16,6 +17,9 @@ CYBERDAILY_URL = "https://www.cyberdaily.au/"
 ALLOWED_NEWS_HOSTS = {"www.cyberdaily.au", "cyberdaily.au"}
 MAX_HTML_BYTES = 5_000_000
 MAX_HEADLINES = 10
+MAX_TITLE_LENGTH = 300
+MAX_LINK_LENGTH = 500
+MAX_DESCRIPTION_LENGTH = 1000
 
 
 def _is_allowed_url(url, allowed_hosts):
@@ -30,7 +34,7 @@ def _sanitize_text(text):
     if not text:
         return ""
     cleaned = " ".join(text.split())
-    return cleaned[:500]
+    return cleaned[:MAX_DESCRIPTION_LENGTH]
 
 
 def _normalize_link(link):
@@ -42,7 +46,32 @@ def _normalize_link(link):
         return ""
     if (parsed.hostname or "").lower() not in ALLOWED_NEWS_HOSTS:
         return ""
-    return absolute
+    return absolute[:MAX_LINK_LENGTH]
+
+
+def _atomic_write_json(path, data):
+    parent = Path(path).parent
+    parent.mkdir(exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(prefix=".tmp_", suffix=".json", dir=str(parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
+            json.dump(data, tmp_file, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
+def _is_valid_headline_record(headline):
+    if not isinstance(headline, dict):
+        return False
+    title = headline.get("title")
+    if not isinstance(title, str) or not title.strip():
+        return False
+    link = headline.get("link", "")
+    if not isinstance(link, str):
+        return False
+    return True
 
 
 def _fetch_news_page():
@@ -83,10 +112,10 @@ def _extract_headline_data(container):
     description = _sanitize_text(desc_elem.get_text(" ", strip=True)) if desc_elem else ""
 
     return {
-        "title": title,
+        "title": title[:MAX_TITLE_LENGTH],
         "category": "General",
         "link": link,
-        "description": description,
+        "description": description[:MAX_DESCRIPTION_LENGTH],
         "fetched_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "source": "CyberDaily AU",
     }
@@ -146,6 +175,8 @@ def save_headlines(headlines_data):
             except json.JSONDecodeError:
                 existing_headlines = []
 
+        existing_headlines = [h for h in existing_headlines if _is_valid_headline_record(h)]
+
         merged = {}
         for headline in existing_headlines:
             key = headline_dedup_key(headline)
@@ -155,6 +186,8 @@ def save_headlines(headlines_data):
 
         new_headlines_added = 0
         for headline in headlines_data:
+            if not _is_valid_headline_record(headline):
+                continue
             key = headline_dedup_key(headline)
             if not key[0]:
                 continue
@@ -166,8 +199,7 @@ def save_headlines(headlines_data):
         merged_headlines.sort(key=lambda item: item.get("fetched_at", ""), reverse=True)
         merged_headlines = merged_headlines[:MAX_HEADLINES]
 
-        with open(NEWS_FILE, "w", encoding="utf-8") as f:
-            json.dump(merged_headlines, f, indent=2, ensure_ascii=False)
+        _atomic_write_json(NEWS_FILE, merged_headlines)
 
         print(f"[News Scraper] Saved {new_headlines_added} new headlines to {NEWS_FILE}")
         print(f"[News Scraper] Total headlines in database: {len(merged_headlines)}")

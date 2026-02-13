@@ -24,13 +24,14 @@ Collects CVEs and cybersecurity news on a 15-minute schedule.
   - Runs both scrapers every 15 minutes
   - Runs once immediately on start
   - Performs duplicate cleanup checks
+  - Creates one log file per process run in `logs/` and appends each 15-minute cycle to that same file
 
 ## Recommended Run (No Manual Venv)
 
 Use the runner scripts. They auto-create `.venv` (if missing) and install dependencies.
 For `main`/`cve` modes, the runner also:
 - loads `GITHUB_TOKEN` from user environment if available
-- prompts for a token if none is found
+- prompts for a token (hidden input) if none is found
 
 Windows (PowerShell):
 
@@ -79,3 +80,4 @@ python main.py
 
 - `data/cves.json`: max 10, deduped by CVE ID, newest first
 - `data/cybersecurity_news.json`: max 10, deduped by canonical title+URL, newest first
+- `logs/scraper_run_YYYYMMDD_HHMMSS.log`: one file per scheduler start

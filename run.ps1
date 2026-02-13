@@ -34,7 +34,11 @@ function Ensure-GitHubToken {
     }
 
     Write-Host "[Runner] No GitHub token found. CVE fetching may be rate-limited."
-    $enteredToken = Read-Host "Enter GitHub token (or press Enter to continue without one)"
+    $enteredTokenSecure = Read-Host "Enter GitHub token (or press Enter to continue without one)" -AsSecureString
+    $enteredTokenPtr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($enteredTokenSecure)
+    $enteredToken = [Runtime.InteropServices.Marshal]::PtrToStringAuto($enteredTokenPtr)
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($enteredTokenPtr)
+
     if ([string]::IsNullOrWhiteSpace($enteredToken)) {
         Write-Host "[Runner] Continuing without token."
         return

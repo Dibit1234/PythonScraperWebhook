@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -86,6 +87,19 @@ def _is_allowed_url(url, allowed_hosts):
         return False
     host = (parsed.hostname or "").lower()
     return host in allowed_hosts
+
+
+def _atomic_write_json(path, data):
+    parent = Path(path).parent
+    parent.mkdir(exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(prefix=".tmp_", suffix=".json", dir=str(parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
+            json.dump(data, tmp_file, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 def _request_json(url, timeout=10):
@@ -334,8 +348,7 @@ def save_cves(cves_data):
 
         sorted_cves = sorted(merged_by_id.values(), key=_cve_sort_key, reverse=True)[:MAX_CVES]
 
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(sorted_cves, f, indent=2, ensure_ascii=False)
+        _atomic_write_json(DATA_FILE, sorted_cves)
 
         print(f"[CVE Scraper] Saved {new_cves_added} new CVEs to {DATA_FILE}")
         print(f"[CVE Scraper] Total CVEs in database (most recent): {len(sorted_cves)}")

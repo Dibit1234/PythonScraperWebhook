@@ -7,11 +7,40 @@ import schedule
 import time
 from datetime import datetime
 import sys
+from pathlib import Path
 
 # Import scrapers
 from cve_scraper import run_cve_scraper
 from news_scraper import run_news_scraper
 from deduplication import remove_duplicate_entries_from_file, get_duplicate_count
+
+
+class TeeStream:
+    """Write output to both console and log file."""
+
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, data):
+        for stream in self.streams:
+            stream.write(data)
+            stream.flush()
+
+    def flush(self):
+        for stream in self.streams:
+            stream.flush()
+
+
+def initialize_run_logging():
+    """Create one log file per scheduler process run."""
+    Path("logs").mkdir(exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = Path("logs") / f"scraper_run_{timestamp}.log"
+    log_file = open(log_path, "a", encoding="utf-8")
+    sys.stdout = TeeStream(sys.__stdout__, log_file)
+    sys.stderr = TeeStream(sys.__stderr__, log_file)
+    print(f"[Main] Logging to {log_path}")
+    return log_file
 
 
 def run_all_scrapers():
@@ -56,7 +85,8 @@ def run_all_scrapers():
 
 def schedule_scrapers():
     """Schedule the scrapers to run every 15 minutes"""
-    
+    log_file = initialize_run_logging()
+
     # Schedule the job every 15 minutes
     schedule.every(15).minutes.do(run_all_scrapers)
     
@@ -75,6 +105,8 @@ def schedule_scrapers():
     except KeyboardInterrupt:
         print("\n[Main] Scheduler stopped by user")
         sys.exit(0)
+    finally:
+        log_file.close()
 
 
 if __name__ == "__main__":

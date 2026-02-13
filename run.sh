@@ -29,7 +29,8 @@ ensure_github_token() {
   fi
 
   echo "[Runner] No GITHUB_TOKEN found. CVE fetching may be rate-limited."
-  read -r -p "Enter GitHub token (or press Enter to continue without one): " entered_token
+  read -r -s -p "Enter GitHub token (or press Enter to continue without one): " entered_token
+  echo
   if [[ -n "$entered_token" ]]; then
     export GITHUB_TOKEN="$entered_token"
     echo "[Runner] Token set for this run."
