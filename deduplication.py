@@ -15,6 +15,10 @@ TRACKING_PARAMS = {
     "mc_eid",
     "mkt_tok",
 }
+TITLE_PREFIX_PATTERN = re.compile(
+    r"^(security|digital transformation|cloud|government|privacy|ransomware|threat intelligence)\s+",
+    re.IGNORECASE,
+)
 
 
 def deduplicate_cves(cves_list):
@@ -56,7 +60,9 @@ def canonicalize_title(title):
     """Normalize title for stable dedup checks."""
     if not isinstance(title, str):
         return ""
-    return re.sub(r"\s+", " ", title).strip().lower()
+    cleaned = re.sub(r"\s+", " ", title).strip()
+    cleaned = TITLE_PREFIX_PATTERN.sub("", cleaned).strip()
+    return cleaned.lower()
 
 
 def canonicalize_url(url):

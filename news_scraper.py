@@ -69,6 +69,59 @@ def _normalize_link(link):
     return absolute[:MAX_LINK_LENGTH]
 
 
+def _category_from_url(link):
+    if not link:
+        return "General"
+    parsed = urlparse(link)
+    parts = [p for p in parsed.path.split("/") if p]
+    if not parts:
+        return "General"
+
+    section = parts[0].lower()
+    mapping = {
+        "security": "Security",
+        "digital-transformation": "Digital Transformation",
+        "cloud": "Cloud",
+        "government": "Government",
+        "privacy": "Privacy",
+        "ransomware": "Ransomware",
+        "threat-intelligence": "Threat Intelligence",
+    }
+    return mapping.get(section, "General")
+
+
+def _split_category_from_title(title, category_hint):
+    if not title:
+        return "General", ""
+
+    title_clean = " ".join(title.split()).strip()
+    if not title_clean:
+        return "General", ""
+
+    if category_hint != "General":
+        pattern = rf"^{re.escape(category_hint)}\s+"
+        stripped = re.sub(pattern, "", title_clean, flags=re.IGNORECASE).strip()
+        if stripped:
+            return category_hint, stripped
+
+    known_categories = [
+        "Security",
+        "Digital Transformation",
+        "Cloud",
+        "Government",
+        "Privacy",
+        "Ransomware",
+        "Threat Intelligence",
+    ]
+    for category in known_categories:
+        pattern = rf"^{re.escape(category)}\s+"
+        stripped = re.sub(pattern, "", title_clean, flags=re.IGNORECASE).strip()
+        if stripped != title_clean:
+            return category, stripped
+
+    return category_hint if category_hint else "General", title_clean
+
+
 def _parse_iso_datetime(value):
     if not value or not isinstance(value, str):
         return None
@@ -171,18 +224,38 @@ def _extract_headline_data(container):
 
     link_elem = container.find("a", href=True)
     link = _normalize_link(link_elem["href"]) if link_elem else ""
+    category_hint = _category_from_url(link)
+    category, title = _split_category_from_title(title, category_hint)
 
     desc_elem = container.find(["p", "span", "div"], class_=re.compile("excerpt|summary|description", re.I))
     description = _sanitize_text(desc_elem.get_text(" ", strip=True)) if desc_elem else ""
 
     return {
         "title": title[:MAX_TITLE_LENGTH],
-        "category": "General",
+        "category": category,
         "link": link,
         "description": description[:MAX_DESCRIPTION_LENGTH],
         "fetched_at": _to_utc_z(datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")),
         "source": "CyberDaily AU",
     }
+
+
+def _normalize_headline_record(headline):
+    if not isinstance(headline, dict):
+        return headline
+
+    title = _sanitize_text(headline.get("title", ""))
+    link = _normalize_link(headline.get("link", ""))
+    category_hint = _category_from_url(link)
+    category, clean_title = _split_category_from_title(title, category_hint)
+
+    headline["title"] = clean_title[:MAX_TITLE_LENGTH]
+    headline["category"] = category
+    headline["link"] = link
+    headline["description"] = _sanitize_text(headline.get("description", ""))[:MAX_DESCRIPTION_LENGTH]
+    headline["fetched_at"] = _to_utc_z(headline.get("fetched_at"))
+    headline["source"] = headline.get("source", "CyberDaily AU")
+    return headline
 
 
 def scrape_cyberdaily_headlines():
@@ -252,7 +325,7 @@ def save_headlines(headlines_data):
                 if not isinstance(item, dict):
                     stats["dropped_invalid"] += 1
                     continue
-                item["fetched_at"] = _to_utc_z(item.get("fetched_at"))
+                item = _normalize_headline_record(item)
                 if not _is_valid_headline_record(item):
                     stats["dropped_invalid"] += 1
                     continue
@@ -263,7 +336,7 @@ def save_headlines(headlines_data):
                 if not isinstance(item, dict):
                     stats["dropped_invalid"] += 1
                     continue
-                item["fetched_at"] = _to_utc_z(item.get("fetched_at"))
+                item = _normalize_headline_record(item)
                 if not _is_valid_headline_record(item):
                     stats["dropped_invalid"] += 1
                     continue
