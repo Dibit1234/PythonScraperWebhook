@@ -35,25 +35,34 @@ function Ensure-GitHubToken {
     }
 
     Write-Host "[Runner] No GitHub token found. CVE fetching may be rate-limited."
-    $enteredTokenSecure = Read-Host "Enter GitHub token (or press Enter to continue without one)" -AsSecureString
-    $enteredTokenPtr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($enteredTokenSecure)
-    $enteredToken = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($enteredTokenPtr)
-    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($enteredTokenPtr)
+    while ($true) {
+        $enteredTokenSecure = Read-Host "Paste GitHub token, then press Enter (or press Enter to continue without one)" -AsSecureString
+        $enteredTokenPtr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($enteredTokenSecure)
+        $enteredToken = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($enteredTokenPtr)
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($enteredTokenPtr)
 
-    if ([string]::IsNullOrWhiteSpace($enteredToken)) {
-        Write-Host "[Runner] Continuing without token."
-        return
+        if ([string]::IsNullOrWhiteSpace($enteredToken)) {
+            Write-Host "[Runner] Continuing without token."
+            return
+        }
+
+        $normalized = Normalize-GitHubToken $enteredToken
+        if ([string]::IsNullOrWhiteSpace($normalized)) {
+            Write-Host "[Runner] Token input was not recognized. Please try again."
+            continue
+        }
+
+        $suffix = if ($normalized.Length -ge 4) { $normalized.Substring($normalized.Length - 4) } else { $normalized }
+        Write-Host "[Runner] Token captured (length: $($normalized.Length), ends with: $suffix)."
+        $confirmUse = Read-Host "Use this token for this run? (Y/n)"
+        if ($confirmUse -match '^[Nn]$') {
+            Write-Host "[Runner] Re-enter token."
+            continue
+        }
+        $env:GITHUB_TOKEN = $normalized
+        break
     }
 
-    $normalized = Normalize-GitHubToken $enteredToken
-    if ([string]::IsNullOrWhiteSpace($normalized)) {
-        Write-Host "[Runner] Token input was not recognized. Continuing without token."
-        return
-    }
-
-    $env:GITHUB_TOKEN = $normalized
-    $suffix = if ($normalized.Length -ge 4) { $normalized.Substring($normalized.Length - 4) } else { $normalized }
-    Write-Host "[Runner] Token captured (length: $($normalized.Length), ends with: $suffix)."
     $saveChoice = Read-Host "Save token for future runs in user environment? (y/N)"
     if ($saveChoice -match '^[Yy]$') {
         [Environment]::SetEnvironmentVariable("GITHUB_TOKEN", $env:GITHUB_TOKEN, "User")

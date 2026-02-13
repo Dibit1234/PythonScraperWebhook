@@ -47,21 +47,32 @@ ensure_github_token() {
   fi
 
   echo "[Runner] No GITHUB_TOKEN found. CVE fetching may be rate-limited."
-  read -r -s -p "Enter GitHub token (or press Enter to continue without one): " entered_token
-  echo
-  if [[ -n "$entered_token" ]]; then
-    entered_token="$(normalize_github_token "$entered_token")"
+  while true; do
+    read -r -s -p "Paste GitHub token, then press Enter (or press Enter to continue without one): " entered_token
+    echo
     if [[ -z "$entered_token" ]]; then
-      echo "[Runner] Token input was not recognized. Continuing without token."
+      echo "[Runner] Continuing without token."
       return
     fi
-    export GITHUB_TOKEN="$entered_token"
+
+    entered_token="$(normalize_github_token "$entered_token")"
+    if [[ -z "$entered_token" ]]; then
+      echo "[Runner] Token input was not recognized. Please try again."
+      continue
+    fi
+
     local suffix="${entered_token: -4}"
     echo "[Runner] Token captured (length: ${#entered_token}, ends with: ${suffix})."
+    read -r -p "Use this token for this run? (Y/n): " confirm_use
+    if [[ "$confirm_use" =~ ^[Nn]$ ]]; then
+      echo "[Runner] Re-enter token."
+      continue
+    fi
+
+    export GITHUB_TOKEN="$entered_token"
     echo "[Runner] Token set for this run."
-  else
-    echo "[Runner] Continuing without token."
-  fi
+    return
+  done
 }
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
