@@ -1,3 +1,5 @@
-/.github
-/.data
-/.logs
+/data/
+/logs/
+/.venv/
+/__pycache__/
+*.pyc
