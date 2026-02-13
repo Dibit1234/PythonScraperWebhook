@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE="${1:-main}"
+
+case "$MODE" in
+  main|cve|news|check) ;;
+  *)
+    echo "[Runner] Invalid mode: $MODE"
+    echo "Usage: ./run.sh [main|cve|news|check]"
+    exit 1
+    ;;
+esac
+
+step() {
+  local description="$1"
+  shift
+  echo "[Runner] ${description}..."
+  "$@"
+}
+
+ensure_github_token() {
+  if [[ "$MODE" != "main" && "$MODE" != "cve" ]]; then
+    return
+  fi
+
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    return
+  fi
+
+  echo "[Runner] No GITHUB_TOKEN found. CVE fetching may be rate-limited."
+  read -r -p "Enter GitHub token (or press Enter to continue without one): " entered_token
+  if [[ -n "$entered_token" ]]; then
+    export GITHUB_TOKEN="$entered_token"
+    echo "[Runner] Token set for this run."
+  else
+    echo "[Runner] Continuing without token."
+  fi
+}
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="${REPO_ROOT}/.venv"
+VENV_PYTHON="${VENV_DIR}/bin/python"
+
+ensure_github_token
+
+if [[ ! -x "$VENV_PYTHON" ]]; then
+  if command -v python3 >/dev/null 2>&1; then
+    step "Creating virtual environment with python3" python3 -m venv "$VENV_DIR"
+  else
+    step "Creating virtual environment with python" python -m venv "$VENV_DIR"
+  fi
+fi
+
+step "Upgrading pip" "$VENV_PYTHON" -m pip install --upgrade pip
+step "Installing dependencies" "$VENV_PYTHON" -m pip install -r "${REPO_ROOT}/requirements.txt"
+
+case "$MODE" in
+  main) SCRIPT="main.py" ;;
+  cve) SCRIPT="cve_scraper.py" ;;
+  news) SCRIPT="news_scraper.py" ;;
+  check) SCRIPT="check_data.py" ;;
+esac
+
+step "Running ${SCRIPT}" "$VENV_PYTHON" "${REPO_ROOT}/${SCRIPT}"

@@ -32,6 +32,8 @@ For `main`/`cve` modes, the runner also:
 - loads `GITHUB_TOKEN` from user environment if available
 - prompts for a token if none is found
 
+Windows (PowerShell):
+
 ```powershell
 .\run.ps1 main
 .\run.ps1 cve
@@ -39,13 +41,22 @@ For `main`/`cve` modes, the runner also:
 .\run.ps1 check
 ```
 
-Or from CMD:
+Windows (CMD):
 
 ```bat
 run.bat main
 run.bat cve
 run.bat news
 run.bat check
+```
+
+Linux/macOS (bash):
+
+```bash
+./run.sh main
+./run.sh cve
+./run.sh news
+./run.sh check
 ```
 
 ## VS Code Tasks
