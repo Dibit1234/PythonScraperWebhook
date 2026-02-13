@@ -23,12 +23,13 @@ function Ensure-GitHubToken {
     }
 
     if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
+        $env:GITHUB_TOKEN = Normalize-GitHubToken $env:GITHUB_TOKEN
         return
     }
 
     $savedToken = [Environment]::GetEnvironmentVariable("GITHUB_TOKEN", "User")
     if (-not [string]::IsNullOrWhiteSpace($savedToken)) {
-        $env:GITHUB_TOKEN = $savedToken
+        $env:GITHUB_TOKEN = Normalize-GitHubToken $savedToken
         Write-Host "[Runner] Loaded GitHub token from user environment."
         return
     }
@@ -36,7 +37,7 @@ function Ensure-GitHubToken {
     Write-Host "[Runner] No GitHub token found. CVE fetching may be rate-limited."
     $enteredTokenSecure = Read-Host "Enter GitHub token (or press Enter to continue without one)" -AsSecureString
     $enteredTokenPtr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($enteredTokenSecure)
-    $enteredToken = [Runtime.InteropServices.Marshal]::PtrToStringAuto($enteredTokenPtr)
+    $enteredToken = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($enteredTokenPtr)
     [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($enteredTokenPtr)
 
     if ([string]::IsNullOrWhiteSpace($enteredToken)) {
@@ -44,7 +45,15 @@ function Ensure-GitHubToken {
         return
     }
 
-    $env:GITHUB_TOKEN = $enteredToken.Trim()
+    $normalized = Normalize-GitHubToken $enteredToken
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        Write-Host "[Runner] Token input was not recognized. Continuing without token."
+        return
+    }
+
+    $env:GITHUB_TOKEN = $normalized
+    $suffix = if ($normalized.Length -ge 4) { $normalized.Substring($normalized.Length - 4) } else { $normalized }
+    Write-Host "[Runner] Token captured (length: $($normalized.Length), ends with: $suffix)."
     $saveChoice = Read-Host "Save token for future runs in user environment? (y/N)"
     if ($saveChoice -match '^[Yy]$') {
         [Environment]::SetEnvironmentVariable("GITHUB_TOKEN", $env:GITHUB_TOKEN, "User")
@@ -52,6 +61,33 @@ function Ensure-GitHubToken {
     } else {
         Write-Host "[Runner] Token set for this run only."
     }
+}
+
+function Normalize-GitHubToken {
+    param([string]$Token)
+
+    if ([string]::IsNullOrWhiteSpace($Token)) {
+        return ""
+    }
+
+    $clean = $Token.Replace([char]27 + "[200~", "").Replace([char]27 + "[201~", "")
+    $clean = $clean.Trim()
+    $clean = $clean -replace "^[~\s]*200~", ""
+    $clean = $clean -replace "201~[~\s]*$", ""
+    $clean = $clean -replace "[\r\n\t ]+", ""
+
+    $patterns = @(
+        "(github_pat_[A-Za-z0-9_]+)",
+        "(gh[pousr]_[A-Za-z0-9]+)"
+    )
+    foreach ($pattern in $patterns) {
+        $match = [regex]::Match($clean, $pattern)
+        if ($match.Success) {
+            return $match.Groups[1].Value
+        }
+    }
+
+    return $clean
 }
 
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path

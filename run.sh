@@ -19,12 +19,30 @@ step() {
   "$@"
 }
 
+normalize_github_token() {
+  local token="$1"
+  token="${token//$'\e[200~'/}"
+  token="${token//$'\e[201~'/}"
+  token="$(printf '%s' "$token" | sed -E 's/^[[:space:]~]*200~//; s/201~[[:space:]~]*$//; s/[[:space:]]+//g')"
+
+  if [[ "$token" =~ (github_pat_[A-Za-z0-9_]+) ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return
+  fi
+  if [[ "$token" =~ (gh[pousr]_[A-Za-z0-9]+) ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return
+  fi
+  printf '%s' "$token"
+}
+
 ensure_github_token() {
   if [[ "$MODE" != "main" && "$MODE" != "cve" ]]; then
     return
   fi
 
   if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    GITHUB_TOKEN="$(normalize_github_token "$GITHUB_TOKEN")"
     return
   fi
 
@@ -32,7 +50,14 @@ ensure_github_token() {
   read -r -s -p "Enter GitHub token (or press Enter to continue without one): " entered_token
   echo
   if [[ -n "$entered_token" ]]; then
+    entered_token="$(normalize_github_token "$entered_token")"
+    if [[ -z "$entered_token" ]]; then
+      echo "[Runner] Token input was not recognized. Continuing without token."
+      return
+    fi
     export GITHUB_TOKEN="$entered_token"
+    local suffix="${entered_token: -4}"
+    echo "[Runner] Token captured (length: ${#entered_token}, ends with: ${suffix})."
     echo "[Runner] Token set for this run."
   else
     echo "[Runner] Continuing without token."

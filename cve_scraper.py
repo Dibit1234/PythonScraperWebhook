@@ -21,6 +21,10 @@ MAX_CVES = 10
 ISO_DATE_FORMATS = ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z")
 COMPACT_DATE_FORMAT = "%d-%m-%Y"
 CVE_ID_PATTERN = re.compile(r"^CVE-\d{4}-\d{4,}$")
+GITHUB_TOKEN_PATTERNS = (
+    re.compile(r"(github_pat_[A-Za-z0-9_]+)"),
+    re.compile(r"(gh[pousr]_[A-Za-z0-9]+)"),
+)
 UNAUTHENTICATED_MIN_REQUEST_INTERVAL_SECONDS = 1.0
 AUTHENTICATED_MIN_REQUEST_INTERVAL_SECONDS = 0.05
 # The scheduler can execute 5 runs within a rolling 60-minute window
@@ -53,7 +57,27 @@ def _vlog(message):
 
 
 def _has_github_token():
-    return bool(os.getenv("GITHUB_TOKEN"))
+    token = _normalize_github_token(os.getenv("GITHUB_TOKEN", ""))
+    return bool(token)
+
+
+def _normalize_github_token(raw_token):
+    if not raw_token:
+        return ""
+
+    cleaned = str(raw_token)
+    cleaned = cleaned.replace("\x1b[200~", "").replace("\x1b[201~", "")
+    cleaned = cleaned.strip()
+    cleaned = re.sub(r"^[~\s]*200~", "", cleaned)
+    cleaned = re.sub(r"201~[~\s]*$", "", cleaned)
+    cleaned = re.sub(r"[\r\n\t ]+", "", cleaned)
+
+    for pattern in GITHUB_TOKEN_PATTERNS:
+        match = pattern.search(cleaned)
+        if match:
+            return match.group(1)
+
+    return cleaned
 
 
 def _min_request_interval_seconds():
@@ -128,7 +152,7 @@ def _request_json(url, timeout=10):
         raise ValueError(f"Blocked URL: {url}")
 
     headers = {"Accept": "application/json"}
-    token = os.getenv("GITHUB_TOKEN")
+    token = _normalize_github_token(os.getenv("GITHUB_TOKEN", ""))
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
