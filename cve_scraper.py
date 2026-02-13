@@ -27,8 +27,8 @@ GITHUB_TOKEN_PATTERNS = (
 )
 UNAUTHENTICATED_MIN_REQUEST_INTERVAL_SECONDS = 1.0
 AUTHENTICATED_MIN_REQUEST_INTERVAL_SECONDS = 0.05
-# The scheduler can execute 5 runs within a rolling 60-minute window
-# (immediate startup run + every 15 minutes), so keep this <= 100.
+# The scheduler can execute 2 runs within a rolling 24-hour window
+# (immediate startup run + daily scheduled run), so this value remains conservative.
 GITHUB_MAX_API_CALLS_PER_RUN = 80
 MAX_RATE_LIMIT_WAIT_SECONDS = 30
 HTTP_MAX_RETRIES = 3

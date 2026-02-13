@@ -1,6 +1,6 @@
 """
 Main Scheduler
-Runs both CVE and News scrapers on a 15-minute schedule
+Runs both CVE and News scrapers on a daily schedule
 """
 
 import schedule
@@ -162,7 +162,7 @@ def run_all_scrapers():
 
     print(f"{'='*60}")
     print(f"Scrapers completed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Next run scheduled in 15 minutes")
+    print(f"Next run scheduled at {RUN_DAILY_AT}")
     print(f"{'='*60}\n")
 
 

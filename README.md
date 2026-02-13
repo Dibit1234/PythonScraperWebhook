@@ -1,6 +1,6 @@
 ﻿# Python Scraper Webhook
 
-Collects CVEs and cybersecurity news every 15 minutes with deduplication, safe writes, rate controls, and run/session logging.
+Collects CVEs and cybersecurity news on a daily schedule with deduplication, safe writes, rate controls, and run/session logging.
 
 ## Core Behavior
 
@@ -20,7 +20,7 @@ Collects CVEs and cybersecurity news every 15 minutes with deduplication, safe w
   - Newest entries first by `fetched_at`
 
 - `main.py`
-  - Runs both scrapers every 15 minutes
+  - Runs both scrapers once daily at configurable `RUN_DAILY_AT` (default `01:00`)
   - Runs once immediately on start
   - Creates one log file per scheduler process run in `logs/`
   - Rotates logs (keeps newest 30 by default)

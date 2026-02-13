@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Run Scrapers (15-minute schedule)",
+      "label": "Run Scrapers (Daily schedule)",
       "type": "shell",
       "command": "powershell",
       "args": [
