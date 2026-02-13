@@ -20,6 +20,7 @@ from runtime_lock import FileLock
 LOG_RETENTION_COUNT = 30
 SCHEDULER_LOCK_PATH = "data/.scheduler.lock"
 RUNTIME_STATUS_FILE = "data/runtime_status.json"
+RUN_DAILY_AT = "01:00"
 
 
 class TeeStream:
@@ -166,7 +167,7 @@ def run_all_scrapers():
 
 
 def schedule_scrapers():
-    """Schedule the scrapers to run every 15 minutes"""
+    """Schedule the scrapers to run once daily."""
     scheduler_lock = FileLock(SCHEDULER_LOCK_PATH, timeout_seconds=1, stale_seconds=3600)
     if not scheduler_lock.acquire():
         print("[Main] Another scheduler instance appears to be running. Exiting.")
@@ -174,11 +175,11 @@ def schedule_scrapers():
 
     log_file = initialize_run_logging()
 
-    # Schedule the job every 15 minutes
-    schedule.every(15).minutes.do(run_all_scrapers)
+    # Schedule one run daily at configured time (24h format HH:MM)
+    schedule.every().day.at(RUN_DAILY_AT).do(run_all_scrapers)
     
     print(f"[Main] Scheduler initialized at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("[Main] Scrapers will run every 15 minutes")
+    print(f"[Main] Scrapers will run once daily at {RUN_DAILY_AT}")
     print("[Main] Press Ctrl+C to stop\n")
     
     # Run initial scrape immediately
