@@ -1,1 +1,4 @@
 /.github
+data/cves.json
+data/cybersecurity_news.json
+/.logs

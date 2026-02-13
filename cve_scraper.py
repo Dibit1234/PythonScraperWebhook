@@ -30,6 +30,10 @@ _SESSION = requests.Session()
 _LAST_GITHUB_REQUEST_TS = 0.0
 _GITHUB_API_CALLS_THIS_RUN = 0
 
+CVSS_PRIORITY = ("cvssV4_0", "cvssV3_1", "cvssV3_0", "cvssV2_0")
+MAX_DETAIL_CHUNKS = 6
+MAX_CHUNK_LENGTH = 220
+
 
 def _has_github_token():
     return bool(os.getenv("GITHUB_TOKEN"))
@@ -214,6 +218,230 @@ def _is_valid_cve_record(cve):
     return bool(CVE_ID_PATTERN.fullmatch(cve_id))
 
 
+def _split_text_chunks(text, max_chunk_length=MAX_CHUNK_LENGTH):
+    if not text:
+        return []
+    sentence_like = re.split(r"(?<=[.!?])\s+", " ".join(text.split()))
+    chunks = []
+    for sentence in sentence_like:
+        s = sentence.strip()
+        if not s:
+            continue
+        while len(s) > max_chunk_length:
+            chunks.append(s[:max_chunk_length].rstrip())
+            s = s[max_chunk_length:].lstrip()
+        if s:
+            chunks.append(s)
+    return chunks
+
+
+def _extract_problem_types(cna):
+    problem_types = []
+    for item in cna.get("problemTypes", []):
+        for desc in item.get("descriptions", []):
+            text = desc.get("description") or desc.get("cweId")
+            if not text:
+                continue
+            cleaned = " ".join(str(text).split())
+            if cleaned and cleaned not in problem_types:
+                problem_types.append(cleaned)
+    return problem_types
+
+
+def _extract_targets(cna):
+    targets = []
+    for affected in cna.get("affected", []):
+        vendor = (affected.get("vendor") or "").strip()
+        product = (affected.get("product") or "").strip()
+        versions = []
+        for version in affected.get("versions", [])[:3]:
+            v = version.get("version")
+            if v:
+                versions.append(str(v).strip())
+
+        parts = [p for p in [vendor, product] if p]
+        if versions:
+            parts.append(f"versions: {', '.join(versions)}")
+
+        text = " | ".join(parts).strip(" |")
+        if text and text not in targets:
+            targets.append(text)
+    return targets
+
+
+def _extract_primary_description(cna):
+    descriptions = cna.get("descriptions", [])
+    if not descriptions:
+        return ""
+    for item in descriptions:
+        value = item.get("value")
+        if value:
+            return " ".join(str(value).split())
+    return ""
+
+
+def _extract_recommendations_from_text(description):
+    recommendations = []
+    for sentence in re.split(r"(?<=[.!?])\s+", description):
+        s = sentence.strip()
+        if not s:
+            continue
+        lower = s.lower()
+        if any(word in lower for word in ("recommend", "patch", "upgrade", "mitigate", "apply", "fix")):
+            recommendations.append(s)
+    return recommendations
+
+
+def _severity_from_score(score):
+    if score is None:
+        return "UNKNOWN"
+    if score >= 9.0:
+        return "CRITICAL"
+    if score >= 7.0:
+        return "HIGH"
+    if score >= 4.0:
+        return "MEDIUM"
+    if score > 0:
+        return "LOW"
+    return "NONE"
+
+
+def _select_best_cvss(cna):
+    best = None
+    for metric in cna.get("metrics", []):
+        for key in CVSS_PRIORITY:
+            payload = metric.get(key)
+            if not isinstance(payload, dict):
+                continue
+
+            score = payload.get("baseScore")
+            try:
+                score = float(score) if score is not None else None
+            except (TypeError, ValueError):
+                score = None
+
+            candidate = {
+                "key": key,
+                "version": payload.get("version", key.replace("cvssV", "").replace("_", ".")),
+                "score": score,
+                "severity": payload.get("baseSeverity"),
+                "vector": payload.get("vectorString"),
+            }
+
+            if best is None:
+                best = candidate
+                continue
+
+            current_rank = CVSS_PRIORITY.index(candidate["key"])
+            best_rank = CVSS_PRIORITY.index(best["key"])
+            if current_rank < best_rank:
+                best = candidate
+            elif current_rank == best_rank and (candidate["score"] or -1) > (best["score"] or -1):
+                best = candidate
+
+    if best is None:
+        return {
+            "version": "",
+            "score": None,
+            "severity": "UNKNOWN",
+            "vector": "",
+        }
+
+    if not best.get("severity"):
+        best["severity"] = _severity_from_score(best.get("score"))
+
+    return {
+        "version": best["version"] or "",
+        "score": best["score"],
+        "severity": best["severity"] or "UNKNOWN",
+        "vector": best.get("vector") or "",
+    }
+
+
+def _build_compact_summary(cve):
+    cna = cve.get("containers", {}).get("cna", {})
+    title = " ".join(str(cna.get("title", "")).split()).strip()
+    primary_description = _extract_primary_description(cna)
+    problem_types = _extract_problem_types(cna)
+    targets = _extract_targets(cna)
+    recommendations = _extract_recommendations_from_text(primary_description)
+    cvss = _select_best_cvss(cna)
+
+    details = []
+    if problem_types:
+        details.append(f"Issue types: {', '.join(problem_types[:4])}")
+    details.extend(_split_text_chunks(primary_description))
+    if targets:
+        details.append(f"Targets: {', '.join(targets[:3])}")
+    if recommendations:
+        details.extend(recommendations[:2])
+
+    deduped_details = []
+    seen = set()
+    for item in details:
+        key = item.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped_details.append(item)
+
+    details = deduped_details[:MAX_DETAIL_CHUNKS]
+    if not details and primary_description:
+        details = [primary_description[:MAX_CHUNK_LENGTH]]
+
+    return {
+        "title": title or cve.get("cveMetadata", {}).get("cveId", ""),
+        "level": cvss["severity"],
+        "cvss": cvss,
+        "problem_types": problem_types[:6],
+        "targets": targets[:6],
+        "details": details,
+    }
+
+
+def compact_cve_record(cve):
+    metadata = cve.get("cveMetadata", {})
+    compact = {
+        "cveMetadata": {
+            "cveId": metadata.get("cveId"),
+            "state": metadata.get("state", ""),
+            "dateReserved": metadata.get("dateReserved", ""),
+            "datePublished": metadata.get("datePublished", ""),
+            "dateUpdated": metadata.get("dateUpdated", ""),
+            "timeUpdated": metadata.get("timeUpdated", ""),
+        },
+        "_fetched_at": cve.get("_fetched_at", datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")),
+    }
+
+    if "summary" in cve and isinstance(cve.get("summary"), dict):
+        summary = cve["summary"]
+        details = summary.get("details", [])
+        normalized_details = []
+        seen = set()
+        for item in details:
+            if not isinstance(item, str):
+                continue
+            text = " ".join(item.split())
+            key = text.lower()
+            if not text or key in seen:
+                continue
+            seen.add(key)
+            normalized_details.append(text[:MAX_CHUNK_LENGTH])
+
+        compact["summary"] = {
+            "title": summary.get("title", compact["cveMetadata"]["cveId"]),
+            "level": summary.get("level", "UNKNOWN"),
+            "cvss": summary.get("cvss", {"version": "", "score": None, "severity": "UNKNOWN", "vector": ""}),
+            "problem_types": summary.get("problem_types", [])[:6],
+            "targets": summary.get("targets", [])[:6],
+            "details": normalized_details[:MAX_DETAIL_CHUNKS],
+        }
+        return compact
+
+    compact["summary"] = _build_compact_summary(cve)
+    return compact
+
+
 def format_cve_dates(cve):
     """Normalize CVE metadata dates for compact storage."""
     metadata = cve.get("cveMetadata")
@@ -289,7 +517,7 @@ def get_recent_cves(limit=MAX_CVES):
                             continue
 
                         cve_json["_fetched_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-                        cves_data.append(format_cve_dates(cve_json))
+                        cves_data.append(compact_cve_record(format_cve_dates(cve_json)))
                         print(
                             f"  [ok] Fetched CVE from {year}/{dir_name}/{file_item.get('name', '')}"
                         )
@@ -332,8 +560,8 @@ def save_cves(cves_data):
             except json.JSONDecodeError:
                 existing_cves = []
 
-        existing_cves = [cve for cve in existing_cves if _is_valid_cve_record(cve)]
-        incoming_cves = [cve for cve in cves_data if _is_valid_cve_record(cve)]
+        existing_cves = [compact_cve_record(format_cve_dates(cve)) for cve in existing_cves if _is_valid_cve_record(cve)]
+        incoming_cves = [compact_cve_record(format_cve_dates(cve)) for cve in cves_data if _is_valid_cve_record(cve)]
 
         merged_by_id = {}
         for cve in existing_cves:

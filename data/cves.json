@@ -1,0 +1,338 @@
+[
+  {
+    "cveMetadata": {
+      "cveId": "CVE-2026-26000",
+      "state": "PUBLISHED",
+      "dateReserved": "09-02-2026",
+      "datePublished": "12-02-2026",
+      "dateUpdated": "12-02-2026",
+      "timeUpdated": "20:54:45"
+    },
+    "_fetched_at": "2026-02-13T12:29:41.931268",
+    "summary": {
+      "title": "XWiki Platform affected by click-jacking through CSS injection in comments",
+      "level": "MEDIUM",
+      "cvss": {
+        "version": "4.0",
+        "score": 5.3,
+        "severity": "MEDIUM",
+        "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:L/VI:L/VA:L/SC:N/SI:N/SA:N"
+      },
+      "problem_types": [
+        "CWE-1021: Improper Restriction of Rendered UI Layers or Frames"
+      ],
+      "targets": [
+        "xwiki | xwiki-platform | versions: >= 17.5.0, <  17.9.0, >= 17.0.0-rc-1, < 17.4.6, < 16.10.13"
+      ],
+      "details": [
+        "Issue types: CWE-1021: Improper Restriction of Rendered UI Layers or Frames",
+        "XWiki Platform is a generic wiki platform offering runtime services for applications built on top of it.",
+        "Prior to 17.9.0, 17.4.6, and 16.10.13, it's possible using comments to inject CSS that would transform the full wiki in a link area leading to a malicious page.",
+        "This vulnerability is fixed in 17.9.0, 17.4.6, and 16.10.13.",
+        "Targets: xwiki | xwiki-platform | versions: >= 17.5.0, < 17.9.0, >= 17.0.0-rc-1, < 17.4.6, < 16.10.13"
+      ]
+    }
+  },
+  {
+    "cveMetadata": {
+      "cveId": "CVE-2026-2391",
+      "state": "PUBLISHED",
+      "dateReserved": "12-02-2026",
+      "datePublished": "12-02-2026",
+      "dateUpdated": "12-02-2026",
+      "timeUpdated": "17:32:05"
+    },
+    "_fetched_at": "2026-02-13T01:31:35.434641Z",
+    "summary": {
+      "title": "qs's arrayLimit bypass in comma parsing allows denial of service",
+      "level": "MEDIUM",
+      "cvss": {
+        "version": "4.0",
+        "score": 6.3,
+        "severity": "MEDIUM",
+        "vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:N/VI:N/VA:L/SC:N/SI:N/SA:N"
+      },
+      "problem_types": [
+        "CWE-20 Improper Input Validation"
+      ],
+      "targets": [
+        "versions: 6.7.0"
+      ],
+      "details": [
+        "Issue types: CWE-20 Improper Input Validation",
+        "### Summary The `arrayLimit` option in qs does not enforce limits for comma-separated values when `comma: true` is enabled, allowing attackers to cause denial-of-service via memory exhaustion.",
+        "This is a bypass of the array limit enforcement, similar to the bracket notation bypass addressed in GHSA-6rw7-vpxm-498p (CVE-2025-15284).",
+        "### Details When the `comma` option is set to `true` (not the default, but configurable in applications), qs allows parsing comma-separated strings as arrays (e.g., `?param=a,b,c` becomes `['a', 'b', 'c']`).",
+        "However, the limit check for `arrayLimit` (default: 20) and the optional throwOnLimitExceeded occur after the comma-handling logic in `parseArrayValue`, enabling a bypass.",
+        "This permits creation of arbitrarily large arrays from a single parameter, leading to excessive memory allocation."
+      ]
+    }
+  },
+  {
+    "cveMetadata": {
+      "cveId": "CVE-2026-2327",
+      "state": "PUBLISHED",
+      "dateReserved": "11-02-2026",
+      "datePublished": "12-02-2026",
+      "dateUpdated": "12-02-2026",
+      "timeUpdated": "14:41:53"
+    },
+    "_fetched_at": "2026-02-13T01:31:37.006666Z",
+    "summary": {
+      "title": "CVE-2026-2327",
+      "level": "MEDIUM",
+      "cvss": {
+        "version": "4.0",
+        "score": 6.9,
+        "severity": "MEDIUM",
+        "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:L/SC:N/SI:N/SA:N/E:P"
+      },
+      "problem_types": [
+        "Regular Expression Denial of Service (ReDoS)"
+      ],
+      "targets": [
+        "n/a | markdown-it | versions: 13.0.0"
+      ],
+      "details": [
+        "Issue types: Regular Expression Denial of Service (ReDoS)",
+        "Versions of the package markdown-it from 13.0.0 and before 14.1.1 are vulnerable to Regular Expression Denial of Service (ReDoS) due to the use of the regex /\\*+$/ in the linkify function.",
+        "An attacker can supply a long sequence of * characters followed by a non-matching character, which triggers excessive backtracking and may lead to a denial-of-service condition.",
+        "Targets: n/a | markdown-it | versions: 13.0.0"
+      ]
+    }
+  },
+  {
+    "cveMetadata": {
+      "cveId": "CVE-2026-2361",
+      "state": "PUBLISHED",
+      "dateReserved": "11-02-2026",
+      "datePublished": "11-02-2026",
+      "dateUpdated": "11-02-2026",
+      "timeUpdated": "18:24:03"
+    },
+    "_fetched_at": "2026-02-13T01:31:35.698660Z",
+    "summary": {
+      "title": "Improper search_path protection in PostgreSQL Anonymizer 2.5 allows any user with create privilege to gain superuser privileges",
+      "level": "HIGH",
+      "cvss": {
+        "version": "3.1",
+        "score": 8.0,
+        "severity": "HIGH",
+        "vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:H"
+      },
+      "problem_types": [
+        "Uncontrolled Search Path Element"
+      ],
+      "targets": [
+        "DALIBO | PostgreSQL Anonymizer | versions: 1"
+      ],
+      "details": [
+        "Issue types: Uncontrolled Search Path Element",
+        "PostgreSQL Anonymizer contains a vulnerability that allows a user to gain superuser privileges by creating a temporary view based on a function containing malicious code.",
+        "When the anon.get_tablesample_ratio function is then called, the malicious code is executed with superuser privileges.",
+        "This privilege elevation can be exploited by users having the CREATE privilege in PostgreSQL 15 and later.",
+        "The risk is higher with PostgreSQL 14 or with instances upgraded from PostgreSQL 14 or a prior version because the creation permission on the public schema is granted by default.",
+        "The problem is resolved in PostgreSQL Anonymizer 3.0.1 and further versions"
+      ]
+    }
+  },
+  {
+    "cveMetadata": {
+      "cveId": "CVE-2026-2360",
+      "state": "PUBLISHED",
+      "dateReserved": "11-02-2026",
+      "datePublished": "11-02-2026",
+      "dateUpdated": "11-02-2026",
+      "timeUpdated": "18:29:12"
+    },
+    "_fetched_at": "2026-02-13T01:31:35.963639Z",
+    "summary": {
+      "title": "Improper search_path protection in PostgreSQL Anonymizer 2.5 allows any user to gain superuser privileges in PostgreSQL 14",
+      "level": "HIGH",
+      "cvss": {
+        "version": "3.1",
+        "score": 8.0,
+        "severity": "HIGH",
+        "vector": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:C/C:H/I:H/A:H"
+      },
+      "problem_types": [
+        "Uncontrolled Search Path Element"
+      ],
+      "targets": [
+        "DALIBO | PostgreSQL Anonymizer | versions: 1"
+      ],
+      "details": [
+        "Issue types: Uncontrolled Search Path Element",
+        "PostgreSQL Anonymizer contains a vulnerability that allows a user to gain superuser privileges by creating a custom operator in the public schema and place malicious code in that operator.",
+        "This operator will later be executed with superuser privileges when the extension is created.",
+        "The risk is higher with PostgreSQL 14 or with instances upgraded from PostgreSQL 14 or a prior version.",
+        "With PostgreSQL 15 and later, the creation permission on the public schema is revoked by default and this exploit can only be achieved if a superuser adds a new schema in her/his own search_path and grants the CREATE pri",
+        "vilege on that schema to untrusted users, both actions being clearly discouraged by the PostgreSQL documentation."
+      ]
+    }
+  },
+  {
+    "cveMetadata": {
+      "cveId": "CVE-2026-2345",
+      "state": "PUBLISHED",
+      "dateReserved": "11-02-2026",
+      "datePublished": "11-02-2026",
+      "dateUpdated": "11-02-2026",
+      "timeUpdated": "21:19:08"
+    },
+    "_fetched_at": "2026-02-13T01:31:36.216701Z",
+    "summary": {
+      "title": "Insufficient Origin Validation in Proctorio Chrome Extension postMessage Handlers",
+      "level": "LOW",
+      "cvss": {
+        "version": "3.1",
+        "score": 3.6,
+        "severity": "LOW",
+        "vector": "CVSS:3.1/AV:L/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:N"
+      },
+      "problem_types": [
+        "CWE-346 Origin Validation Error"
+      ],
+      "targets": [
+        "Proctorio | Secure Exam Proctor Extension | versions: 1.5.25220.33, 1.5.25220.36"
+      ],
+      "details": [
+        "Issue types: CWE-346 Origin Validation Error",
+        "Proctorio Chrome Extension is a browser extension used for online proctoring.",
+        "The extension contains multiple window.addEventListener('message', ...) handlers that do not properly validate the origin of incoming messages.",
+        "Specifically, an internal messaging bridge processes messages based solely on the presence of a fromWebsite property without verifying the event.origin attribute.",
+        "Targets: Proctorio | Secure Exam Proctor Extension | versions: 1.5.25220.33, 1.5.25220.36"
+      ]
+    }
+  },
+  {
+    "cveMetadata": {
+      "cveId": "CVE-2026-2344",
+      "state": "PUBLISHED",
+      "dateReserved": "11-02-2026",
+      "datePublished": "11-02-2026",
+      "dateUpdated": "11-02-2026",
+      "timeUpdated": "21:19:41"
+    },
+    "_fetched_at": "2026-02-13T01:31:36.482237Z",
+    "summary": {
+      "title": "Stored XSS on Plunet BusinessManager",
+      "level": "HIGH",
+      "cvss": {
+        "version": "4.0",
+        "score": 8.6,
+        "severity": "HIGH",
+        "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:P/VC:H/VI:H/VA:L/SC:L/SI:L/SA:N"
+      },
+      "problem_types": [
+        "CWE-79 - XSS"
+      ],
+      "targets": [
+        "Plunet | Plunet BusinessManager | versions: 10.15.1, 10.20"
+      ],
+      "details": [
+        "Issue types: CWE-79 - XSS",
+        "A vulnerability in Plunet Plunet BusinessManager allows unauthorized actions being performed on behalf of privileged users.This issue affects Plunet BusinessManager: 10.15.1",
+        "Targets: Plunet | Plunet BusinessManager | versions: 10.15.1, 10.20"
+      ]
+    }
+  },
+  {
+    "cveMetadata": {
+      "cveId": "CVE-2026-2337",
+      "state": "PUBLISHED",
+      "dateReserved": "11-02-2026",
+      "datePublished": "11-02-2026",
+      "dateUpdated": "11-02-2026",
+      "timeUpdated": "14:19:29"
+    },
+    "_fetched_at": "2026-02-13T01:31:36.732784Z",
+    "summary": {
+      "title": "Refleccted XSS on Plunet BusinessManager",
+      "level": "HIGH",
+      "cvss": {
+        "version": "4.0",
+        "score": 8.7,
+        "severity": "HIGH",
+        "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:H/VI:H/VA:L/SC:L/SI:L/SA:N"
+      },
+      "problem_types": [
+        "CWE-79 - XSS"
+      ],
+      "targets": [
+        "Plunet | Plunet BusinessManager | versions: 10.15.1, 10.22.4"
+      ],
+      "details": [
+        "Issue types: CWE-79 - XSS",
+        "A vulnerability in Plunet Plunet BusinessManager allows session hijacking, data theft, unauthorized actions on behalf of the user.This issue affects Plunet BusinessManager: 10.15.1.",
+        "Targets: Plunet | Plunet BusinessManager | versions: 10.15.1, 10.22.4"
+      ]
+    }
+  },
+  {
+    "cveMetadata": {
+      "cveId": "CVE-2026-2323",
+      "state": "PUBLISHED",
+      "dateReserved": "10-02-2026",
+      "datePublished": "11-02-2026",
+      "dateUpdated": "12-02-2026",
+      "timeUpdated": "17:01:31"
+    },
+    "_fetched_at": "2026-02-13T01:31:37.277388Z",
+    "summary": {
+      "title": "CVE-2026-2323",
+      "level": "UNKNOWN",
+      "cvss": {
+        "version": "",
+        "score": null,
+        "severity": "UNKNOWN",
+        "vector": ""
+      },
+      "problem_types": [
+        "Inappropriate implementation"
+      ],
+      "targets": [
+        "Google | Chrome | versions: 145.0.7632.45"
+      ],
+      "details": [
+        "Issue types: Inappropriate implementation",
+        "Inappropriate implementation in Downloads in Google Chrome prior to 145.0.7632.45 allowed a remote attacker to perform UI spoofing via a crafted HTML page.",
+        "(Chromium security severity: Low)",
+        "Targets: Google | Chrome | versions: 145.0.7632.45"
+      ]
+    }
+  },
+  {
+    "cveMetadata": {
+      "cveId": "CVE-2026-2322",
+      "state": "PUBLISHED",
+      "dateReserved": "10-02-2026",
+      "datePublished": "11-02-2026",
+      "dateUpdated": "12-02-2026",
+      "timeUpdated": "14:05:40"
+    },
+    "_fetched_at": "2026-02-13T01:31:37.538646Z",
+    "summary": {
+      "title": "CVE-2026-2322",
+      "level": "UNKNOWN",
+      "cvss": {
+        "version": "",
+        "score": null,
+        "severity": "UNKNOWN",
+        "vector": ""
+      },
+      "problem_types": [
+        "Inappropriate implementation"
+      ],
+      "targets": [
+        "Google | Chrome | versions: 145.0.7632.45"
+      ],
+      "details": [
+        "Issue types: Inappropriate implementation",
+        "Inappropriate implementation in File input in Google Chrome prior to 145.0.7632.45 allowed a remote attacker who convinced a user to engage in specific UI gestures to perform UI spoofing via a crafted HTML page.",
+        "(Chromium security severity: Low)",
+        "Targets: Google | Chrome | versions: 145.0.7632.45"
+      ]
+    }
+  }
+]
